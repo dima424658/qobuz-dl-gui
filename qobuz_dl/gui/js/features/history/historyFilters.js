@@ -173,7 +173,18 @@
         allBtn.tabIndex = allOn ? 0 : -1;
         errBtn.tabIndex = allOn ? -1 : 0;
         applyFilter();
-        if (list) list.scrollTop = 0;
+        if (list) {
+          const stickToBottom = () => {
+            list.scrollTop = list.scrollHeight;
+          };
+          if (deps.isVirtActive()) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(stickToBottom);
+            });
+          } else {
+            stickToBottom();
+          }
+        }
       };
       allBtn.addEventListener("click", () => applyMode("all"));
       errBtn.addEventListener("click", () => applyMode("errors"));

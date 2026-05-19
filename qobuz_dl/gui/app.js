@@ -10,7 +10,6 @@
   const _cgConst = QG.core.constants;
   const _GUI_PENDING_AUDIO_PREFIX = _cgConst.GUI_PENDING_AUDIO_PREFIX;
   const _TS_VIRT_THRESHOLD = _cgConst.TS_VIRT_THRESHOLD;
-  const _TS_VIRT_OVERSCAN = _cgConst.TS_VIRT_OVERSCAN;
   const _ic = QG.core.icons;
   const _MISSING_PLACEHOLDER_BTN_TIP = _ic.missingPlaceholderBtnTip;
   const _LYRIC_SEARCH_ATTACHED_SVG = _ic.lyricSearchAttachedSvg;
@@ -31,17 +30,13 @@
   }
 
   let _queueHost = null;
+  /** H5 virtualization host (set in `initDownload()`). */
+  let _historyVirtHost = null;
   /** H3 card rendering host (set in `initDownload()`). */
   let _historyCardHost = null;
 
   let _sse = null;
   let _trackStatusMap = new Map();
-  let _tsVirtActive = false;
-  let _tsVirtInnerEl = null;
-  let _tsVirtRowH = 50;
-  let _tsVirtScrollHandlerBound = null;
-  let _tsVirtScrollRaf = 0;
-  let _tsVirtResizeObs = null;
   /** Visible row keys (filtered for virtualized list); mirrors `_tsOrderAll` when not virtual or when showing all. */
   let _tsOrder = [];
   /** Full row keys oldest → newest (unfiltered). */
@@ -145,141 +140,6 @@
     }
   }
 
-  function _tsAppendParent(list) {
-    if (_tsVirtActive && _tsVirtInnerEl) return _tsVirtInnerEl;
-    return list;
-  }
-
-  function _tsTeardownVirtScroller() {
-    const list = document.getElementById("dl-track-status");
-    if (_tsVirtResizeObs) {
-      try {
-        if (list) _tsVirtResizeObs.unobserve(list);
-      } catch (_) {
-        /* ignore */
-      }
-      try {
-        _tsVirtResizeObs.disconnect();
-      } catch (_) {
-        /* ignore */
-      }
-      _tsVirtResizeObs = null;
-    }
-    if (list && _tsVirtScrollHandlerBound) {
-      list.removeEventListener("scroll", _tsVirtScrollHandlerBound);
-      window.removeEventListener("resize", _tsVirtScrollHandlerBound);
-    }
-    _tsVirtScrollHandlerBound = null;
-    _tsVirtInnerEl = null;
-    _tsVirtActive = false;
-    if (_tsVirtScrollRaf) {
-      cancelAnimationFrame(_tsVirtScrollRaf);
-      _tsVirtScrollRaf = 0;
-    }
-  }
-
-  function _tsEnsureVirtInner(list) {
-    const inner = document.createElement("div");
-    inner.id = "ts-virt-inner";
-    inner.className = "track-status-virt-inner";
-    list.appendChild(inner);
-    _tsVirtInnerEl = inner;
-  }
-
-  function _tsUpdateVirtInnerHeight() {
-    if (!_tsVirtInnerEl) return;
-    _tsVirtInnerEl.style.minHeight = `${Math.max(0, _tsOrder.length) * _tsVirtRowH}px`;
-  }
-
-  function _tsPositionVirtCard(card, index) {
-    if (!card || !_tsVirtActive) return;
-    card.classList.add("track-status-card--virt");
-    card.style.top = `${index * _tsVirtRowH}px`;
-    card.style.minHeight = "";
-  }
-
-  function _tsVirtPinnedIndices(n) {
-    const out = new Set();
-    for (const k of _tsActiveDlKeys) {
-      const i = _tsKeyToIndex.get(k);
-      if (i !== undefined && i >= 0 && i < n) out.add(i);
-    }
-    document
-      .querySelectorAll("#dl-track-status .lyric-search-anchor")
-      .forEach((c) => {
-        const k = c.dataset.trackKey;
-        if (!k) return;
-        const i = _tsKeyToIndex.get(k);
-        if (i !== undefined && i >= 0 && i < n) out.add(i);
-      });
-    return out;
-  }
-
-  function _tsVirtMeasureRowH() {
-    if (!_tsVirtInnerEl) return;
-    const card = _tsVirtInnerEl.querySelector(".track-status-card");
-    if (!card) return;
-    const r = card.getBoundingClientRect();
-    const cs = window.getComputedStyle(card);
-    const mb = parseFloat(cs.marginBottom) || 0;
-    if (r.height > 0) _tsVirtRowH = Math.max(48, Math.ceil(r.height + mb));
-    _tsUpdateVirtInnerHeight();
-  }
-
-  function _tsVirtOnScroll() {
-    if (!_tsVirtActive || !_tsVirtInnerEl) return;
-    if (_tsVirtScrollRaf) return;
-    _tsVirtScrollRaf = requestAnimationFrame(() => {
-      _tsVirtScrollRaf = 0;
-      _tsVirtRender();
-    });
-  }
-
-  function _tsVirtRender() {
-    if (!_tsVirtActive || !_tsVirtInnerEl) return;
-    const list = document.getElementById("dl-track-status");
-    if (!list) return;
-    const n = _tsOrder.length;
-    const H = _tsVirtRowH;
-    _tsVirtInnerEl.style.minHeight = `${Math.max(0, n) * H}px`;
-    if (n === 0) return;
-
-    const st = list.scrollTop;
-    const ch = list.clientHeight || 1;
-    let start = Math.floor(st / H) - _TS_VIRT_OVERSCAN;
-    let end = Math.ceil((st + ch) / H) + _TS_VIRT_OVERSCAN;
-    start = Math.max(0, start);
-    end = Math.min(n, end);
-
-    const want = new Set();
-    for (let i = start; i < end; i++) want.add(i);
-    for (const ii of _tsVirtPinnedIndices(n)) want.add(ii);
-
-    for (const [k, card] of [..._trackStatusMap]) {
-      const idx = _tsKeyToIndex.get(k);
-      if (idx === undefined) continue;
-      if (!want.has(idx)) {
-        card.remove();
-        _trackStatusMap.delete(k);
-      }
-    }
-
-    const sorted = [...want].sort((a, b) => a - b);
-    for (let j = 0; j < sorted.length; j++) {
-      const i = sorted[j];
-      const k = _tsOrder[i];
-      if (!k || _trackStatusMap.has(k)) continue;
-      const it = _tsDbItemByKey.get(k);
-      if (!it) continue;
-      _tsMountDbItemAtIndex(it, i);
-    }
-
-    for (const [k, card] of _trackStatusMap) {
-      const idx = _tsKeyToIndex.get(k);
-      if (idx !== undefined) _tsPositionVirtCard(card, idx);
-    }
-  }
-
   function _tsApplyHistoryDbItemToCard(card, it) {
     const alb = (it.lyric_album || "").trim();
     if (it.lyric_artist) {
@@ -360,7 +220,9 @@
   }
 
   function _tsMountDbItemAtIndex(it, index) {
-    if (!_tsVirtInnerEl) return;
+    if (!_historyVirtHost) return;
+    const inner = _historyVirtHost.getVirtInnerEl();
+    if (!inner) return;
     const alb = (it.lyric_album || "").trim();
     const { card, key } = _buildTrackStatusCardEl(
       it.track_no || "",
@@ -369,9 +231,9 @@
       it.cover_url || "",
     );
     _trackStatusMap.set(key, card);
-    _tsVirtInnerEl.appendChild(card);
+    inner.appendChild(card);
     _tsApplyHistoryDbItemToCard(card, it);
-    _tsPositionVirtCard(card, index);
+    _historyVirtHost.positionVirtCard(card, index);
   }
 
   function _tsApplyHistoryDbItemToNewCard(it) {
@@ -2579,7 +2441,7 @@
 
       _tsSkipHistoryFilterApply = true;
       try {
-        _tsTeardownVirtScroller();
+        if (_historyVirtHost) _historyVirtHost.teardownVirtScroller();
         _trackStatusMap.clear();
         _tsOrderAll = [];
         _tsOrder = [];
@@ -2602,22 +2464,8 @@
           }
         }
 
-        if (items.length >= _TS_VIRT_THRESHOLD) {
-          _tsVirtActive = true;
-          _tsEnsureVirtInner(list);
-          _tsVirtScrollHandlerBound = () => _tsVirtOnScroll();
-          list.addEventListener("scroll", _tsVirtScrollHandlerBound, {
-            passive: true,
-          });
-          window.addEventListener("resize", _tsVirtScrollHandlerBound, {
-            passive: true,
-          });
-          if (window.ResizeObserver) {
-            _tsVirtResizeObs = new ResizeObserver(() => _tsVirtOnScroll());
-            _tsVirtResizeObs.observe(list);
-          }
-        } else {
-          _tsVirtActive = false;
+        if (items.length >= _TS_VIRT_THRESHOLD && _historyVirtHost) {
+          _historyVirtHost.activateForList(list);
         }
       } finally {
         _tsSkipHistoryFilterApply = false;
@@ -2625,14 +2473,8 @@
 
       _tsApplyHistoryFilter();
 
-      if (items.length >= _TS_VIRT_THRESHOLD) {
-        _tsUpdateVirtInnerHeight();
-        requestAnimationFrame(() => {
-          _tsVirtRender();
-          _tsVirtMeasureRowH();
-          _tsVirtRender();
-          if (stick) list.scrollTop = list.scrollHeight;
-        });
+      if (items.length >= _TS_VIRT_THRESHOLD && _historyVirtHost) {
+        _historyVirtHost.runInitialRenderPass(list, stick);
       } else {
         _tsSkipHistoryFilterApply = true;
         try {
@@ -2659,7 +2501,7 @@
     }
     const list = document.getElementById("dl-track-status");
     if (!list) return;
-    _tsTeardownVirtScroller();
+    if (_historyVirtHost) _historyVirtHost.teardownVirtScroller();
     _tsOrderAll = [];
     _tsOrder = [];
     _tsKeyToIndex.clear();
@@ -2994,6 +2836,22 @@
     if (
       QG.features.history &&
       QG.features.history.internals &&
+      typeof QG.features.history.internals.bootstrapVirtualization ===
+        "function"
+    ) {
+      _historyVirtHost =
+        QG.features.history.internals.bootstrapVirtualization({
+          getOrder: () => _tsOrder,
+          getKeyToIndex: () => _tsKeyToIndex,
+          getCardMap: () => _trackStatusMap,
+          getDbItemByKey: () => _tsDbItemByKey,
+          getActiveDlKeys: () => _tsActiveDlKeys,
+          mountDbItemAtIndex: _tsMountDbItemAtIndex,
+        });
+    }
+    if (
+      QG.features.history &&
+      QG.features.history.internals &&
       typeof QG.features.history.internals.bootstrapFilters === "function"
     ) {
       _historyFilterHost = QG.features.history.internals.bootstrapFilters({
@@ -3007,12 +2865,20 @@
           _tsOrder = order;
         },
         getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
-        isVirtActive: () => _tsVirtActive,
-        getVirtInnerEl: () => _tsVirtInnerEl,
+        isVirtActive: () =>
+          _historyVirtHost ? _historyVirtHost.isVirtActive() : false,
+        getVirtInnerEl: () =>
+          _historyVirtHost ? _historyVirtHost.getVirtInnerEl() : null,
         rebuildKeyIndex: _tsRebuildKeyIndex,
-        updateVirtInnerHeight: _tsUpdateVirtInnerHeight,
-        virtMeasureRowH: _tsVirtMeasureRowH,
-        virtOnScroll: _tsVirtOnScroll,
+        updateVirtInnerHeight: () => {
+          if (_historyVirtHost) _historyVirtHost.updateVirtInnerHeight();
+        },
+        virtMeasureRowH: () => {
+          if (_historyVirtHost) _historyVirtHost.measureRowH();
+        },
+        virtOnScroll: () => {
+          if (_historyVirtHost) _historyVirtHost.onScroll();
+        },
       });
     }
     if (
@@ -3027,14 +2893,27 @@
         },
         getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
         applyHistoryFilter: _tsApplyHistoryFilter,
-        isVirtActive: () => _tsVirtActive,
-        getVirtInnerEl: () => _tsVirtInnerEl,
+        isVirtActive: () =>
+          _historyVirtHost ? _historyVirtHost.isVirtActive() : false,
+        getVirtInnerEl: () =>
+          _historyVirtHost ? _historyVirtHost.getVirtInnerEl() : null,
         getKeyToIndex: () => _tsKeyToIndex,
-        appendParent: _tsAppendParent,
-        positionVirtCard: _tsPositionVirtCard,
-        updateVirtInnerHeight: _tsUpdateVirtInnerHeight,
-        virtMeasureRowH: _tsVirtMeasureRowH,
-        virtOnScroll: _tsVirtOnScroll,
+        appendParent: (list) =>
+          _historyVirtHost
+            ? _historyVirtHost.appendParent(list)
+            : list,
+        positionVirtCard: (card, index) => {
+          if (_historyVirtHost) _historyVirtHost.positionVirtCard(card, index);
+        },
+        updateVirtInnerHeight: () => {
+          if (_historyVirtHost) _historyVirtHost.updateVirtInnerHeight();
+        },
+        virtMeasureRowH: () => {
+          if (_historyVirtHost) _historyVirtHost.measureRowH();
+        },
+        virtOnScroll: () => {
+          if (_historyVirtHost) _historyVirtHost.onScroll();
+        },
         scrollContainerAtBottom: _scrollContainerAtBottom,
         writeAttachMissingPlaceholder: _writeAttachMissingPlaceholder,
         openAttachTrackPopover: _openAttachTrackPopover,
@@ -3421,7 +3300,7 @@
           if (preCard.dataset.trackKey) {
             _tsActiveDlKeys.delete(preCard.dataset.trackKey);
           }
-          _tsVirtOnScroll();
+          if (_historyVirtHost) _historyVirtHost.onScroll();
         }
         const pk = _purchaseIssueSlotKey(ev, resAlb);
         if (isPurchase && qurl) {
