@@ -567,6 +567,25 @@ Commit: pending
 - **`_tsRebuildKeyIndex`** stays in **`app.js`** (shared by filters + virt).
 - Next: **H6** hydrate/persist extraction; history owns **`_tsDbItemByKey`** semantics.
 
+## Checkpoint H6 - History hydrate/persist (`historyHydratePersist.js`)
+
+Date: 2026-05-18  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/historyHydratePersist.js`: **`bootstrapHydratePersist(deps)`** owns in-memory row store (`dbItemByKey`), `audio_path → lyric_album` index, DB hydrate/clear, download-result persist, lyric snap updates, and **`countDownloadedForRelease`**.
+- **`app.js`:** removed inline hydrate/persist/apply-db-item helpers (~400 lines); **`_historyStoreHost`** wired after card bootstrap; queue **`getTrackStatusMap`** and history **`install`** use the store host; thin delegates remain for mount path and SSE orchestration.
+- **`index.html`:** `historyHydratePersist.js` after virtualization; **`app.js?v=86`**.
+
+### Validation
+
+- `node --check` on `historyHydratePersist.js` and `app.js`; `python -m unittest discover -s tests`.
+
+### Notes
+
+- Queue internals still scan history rows via **`getTrackStatusMap`** dep (same map reference); only the public façade count moved off **`_queueHost.countHistoryDownloadedForRelease`**.
+
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 

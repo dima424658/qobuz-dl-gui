@@ -4,9 +4,8 @@
  * Exposes stable `QobuzGui.features.history.*` after `app.js` calls `install(impl)`.
  * Until install(), methods return safe defaults.
  *
- * Transitional: `countDownloadedForRelease` typically forwards to queue host helpers
- * that scan `_tsDbItemByKey` (see queue internals). In a later milestone (H6 plan),
- * history should own that count so this façade does not route “history counts” via queue.
+ * History should own download-history row semantics via `historyHydratePersist.js`
+ * (`countDownloadedForRelease` scans the in-memory DB map there).
  */
 (function () {
   "use strict";

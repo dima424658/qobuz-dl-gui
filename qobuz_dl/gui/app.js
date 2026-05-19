@@ -29,9 +29,18 @@
     return QG.features.history;
   }
 
+  function _getHistoryDbMap() {
+    return _historyStoreHost
+      ? _historyStoreHost.getDbItemByKey()
+      : _emptyHistoryMap;
+  }
+
   let _queueHost = null;
   /** H5 virtualization host (set in `initDownload()`). */
   let _historyVirtHost = null;
+  /** H6 hydrate/persist host (set in `initDownload()`). */
+  let _historyStoreHost = null;
+  const _emptyHistoryMap = new Map();
   /** H3 card rendering host (set in `initDownload()`). */
   let _historyCardHost = null;
 
@@ -42,11 +51,7 @@
   /** Full row keys oldest → newest (unfiltered). */
   let _tsOrderAll = [];
   let _tsKeyToIndex = new Map();
-  /** Serialized row for mounting/evicting virtual items (API shape + session results). */
-  let _tsDbItemByKey = new Map();
   let _tsActiveDlKeys = new Set();
-  /** audio_path → lyric_album (avoids scanning hundreds of DOM nodes). */
-  let _tsAudioPathAlbum = new Map();
   /** `"all"` | `"errors"` — owned by history filter module after bootstrap. */
   let _historyFilterHost = null;
   /** Skip redundant filter passes while bulk-loading history from DB. */
@@ -96,21 +101,14 @@
     return QG.core.trackIdentity.trackKey(trackNo, title, lyricAlbum);
   }
 
-  /** Stable display order on hydrate: album blocks keep API order; rows within an album sort by track #. */
-  function _tsSortHistoryItemsForDisplay(items) {
-    return items.slice().sort((a, b) => {
-      const albA = (a.lyric_album || "").trim().toLowerCase();
-      const albB = (b.lyric_album || "").trim().toLowerCase();
-      if (albA !== albB) return 0;
-      const na = parseInt(_normalizeTrackNo(a.track_no || "") || "0", 10) || 0;
-      const nb = parseInt(_normalizeTrackNo(b.track_no || "") || "0", 10) || 0;
-      if (na !== nb) return na - nb;
-      return String(a.title || "")
-        .trim()
-        .localeCompare(String(b.title || "").trim(), undefined, {
-          sensitivity: "base",
-        });
-    });
+  function _tsResetListForHydrate(list) {
+    if (_historyVirtHost) _historyVirtHost.teardownVirtScroller();
+    _trackStatusMap.clear();
+    _tsOrderAll = [];
+    _tsOrder = [];
+    _tsKeyToIndex.clear();
+    _tsActiveDlKeys.clear();
+    if (list) list.innerHTML = "";
   }
 
   function _tsApplyHistoryFilter() {
@@ -128,9 +126,9 @@
   }
 
   function _tsRegisterAudioPathAlbum(audioPath, lyricAlbum) {
-    const p = String(audioPath || "").trim();
-    if (!p) return;
-    _tsAudioPathAlbum.set(p, String(lyricAlbum || "").trim());
+    if (_historyStoreHost) {
+      _historyStoreHost.registerAudioPathAlbum(audioPath, lyricAlbum);
+    }
   }
 
   function _tsRebuildKeyIndex() {
@@ -141,81 +139,8 @@
   }
 
   function _tsApplyHistoryDbItemToCard(card, it) {
-    const alb = (it.lyric_album || "").trim();
-    if (it.lyric_artist) {
-      card.dataset.lyricArtist = String(it.lyric_artist);
-    }
-    if (alb) card.dataset.lyricAlbum = alb;
-    if (it.duration_sec) {
-      card.dataset.durationSec = String(parseInt(it.duration_sec, 10) || 0);
-    }
-    if (it.audio_path) {
-      const rawAp = String(it.audio_path || "").trim();
-      if (rawAp && !rawAp.startsWith(_GUI_PENDING_AUDIO_PREFIX)) {
-        card.dataset.audioPath = rawAp;
-        _tsRegisterAudioPathAlbum(rawAp, alb);
-        if (rawAp.toLowerCase().endsWith(".missing.txt")) {
-          card.dataset.resolvedBy = "placeholder";
-        } else if ((it.attach_search_eligible === true || it.attach_search_eligible === 1) && 
-                   String(it.download_status || "").toLowerCase() === "downloaded") {
-          card.dataset.resolvedBy = "search";
-        }
-      }
-    }
-    if (it.track_explicit === true || it.track_explicit === false) {
-      card.dataset.trackExplicit = it.track_explicit ? "1" : "0";
-      _setTrackContentRatingBadge(card, it.track_explicit);
-    }
-    if ((it.slot_track_id || "").trim()) {
-      card.dataset.slotTrackId = String(it.slot_track_id).trim();
-    }
-    if ((it.release_album_id || "").trim()) {
-      card.dataset.releaseAlbumId = String(it.release_album_id).trim();
-    }
-    if (it.attach_search_eligible === true || it.attach_search_eligible === 1) {
-      card.dataset.attachSearchEligible = "1";
-    } else {
-      delete card.dataset.attachSearchEligible;
-    }
-    const st = String(it.download_status || "downloaded").toLowerCase();
-    const detail = String(it.download_detail || "").trim();
-    const isFailed = st === "failed";
-    const isPurchase = st === "purchase_only";
-    if (isPurchase && detail) {
-      _setTrackDownloadChip(
-        it.track_no,
-        it.title,
-        "Album Purchase Only",
-        "failed",
-        {
-          href: detail,
-          titleAttr:
-            "Open album on Qobuz to purchase (full album required for these tracks)",
-          slotTrackId: String(it.slot_track_id || "").trim(),
-          releaseAlbumId: String(it.release_album_id || "").trim(),
-        },
-        alb,
-      );
-    } else {
-      _setTrackDownloadChip(
-        it.track_no,
-        it.title,
-        isFailed ? "failed" : "downloaded",
-        isFailed ? "failed" : "done",
-        undefined,
-        alb,
-      );
-    }
-    if (it.lyric_type && String(it.lyric_type).toLowerCase() !== "loading") {
-      _setTrackLyricsChip(
-        it.track_no,
-        it.title,
-        it.lyric_type,
-        it.lyric_confidence || null,
-        alb,
-        it.lyric_provider || "",
-        it.lyric_destination || "",
-      );
+    if (_historyStoreHost) {
+      _historyStoreHost.applyHistoryDbItemToCard(card, it);
     }
   }
 
@@ -236,91 +161,9 @@
     _historyVirtHost.positionVirtCard(card, index);
   }
 
-  function _tsApplyHistoryDbItemToNewCard(it) {
-    const alb = (it.lyric_album || "").trim();
-    const card = _ensureTrackStatusCard(
-      it.track_no || "",
-      it.title || "",
-      true,
-      it.cover_url || "",
-      alb,
-    );
-    if (!card) return;
-    _tsApplyHistoryDbItemToCard(card, it);
-  }
-
-  function _tsStoreDbItemFromTrackResult(ev, resAlb, card) {
-    const tk = (card && card.dataset.trackKey) || "";
-    if (!tk) return;
-    const tEl = card.querySelector(".track-status-title");
-    const st = String(ev.status || "").toLowerCase();
-    const isFailed = st === "failed";
-    const isPurchase = st === "purchase_only";
-    const detail = String(ev.detail || "").trim();
-    const img = card.querySelector(".track-status-art-img");
-    const it = {
-      track_no: String(ev.track_no || ""),
-      title: (tEl && tEl.textContent) || String(ev.title || ""),
-      lyric_album: resAlb || "",
-      cover_url: (img && img.getAttribute("src")) || "",
-      lyric_artist: (card.dataset.lyricArtist || "").trim(),
-      duration_sec: parseInt(card.dataset.durationSec || "0", 10) || 0,
-      audio_path: (card.dataset.audioPath || "").trim(),
-      track_explicit:
-        card.dataset.trackExplicit === "1"
-          ? true
-          : card.dataset.trackExplicit === "0"
-            ? false
-            : null,
-      download_status: isPurchase ? "purchase_only" : isFailed ? "failed" : "downloaded",
-      download_detail: detail,
-      slot_track_id: String(ev.slot_track_id || "").trim(),
-      release_album_id: String(ev.release_album_id || "").trim(),
-      lyric_type: "",
-      lyric_provider: "",
-      lyric_confidence: "",
-      lyric_destination: "",
-      attach_search_eligible: card.dataset.attachSearchEligible === "1",
-    };
-    const chip = card.querySelector(".lyrics-chip");
-    if (chip) {
-      const parts = (chip.className || "").split(/\s+/);
-      const lt = parts.find((c) =>
-        ["synced", "plain", "none", "error", "instrumental"].includes(c),
-      );
-      if (lt) it.lyric_type = lt;
-      it.lyric_destination = _normalizeLyricDestination(
-        chip.dataset.lyricDestination || "",
-      );
-    }
-    _tsDbItemByKey.set(tk, it);
-    const apStore = (card.dataset.audioPath || "").trim();
-    if (apStore && !apStore.startsWith(_GUI_PENDING_AUDIO_PREFIX)) {
-      _tsRegisterAudioPathAlbum(apStore, (it.lyric_album || "").trim());
-    }
-  }
-
   function _lyricAlbumForTrackEv(ev) {
-    const apEv = String(ev.audio_path || "").trim();
-    if (apEv && _tsAudioPathAlbum.has(apEv)) {
-      return _tsAudioPathAlbum.get(apEv) || "";
-    }
-    let a =
-      ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
-        ? String(ev.lyric_album).trim()
-        : "";
-    if (a) return a;
-    const wantN = _normalizeTrackNo(ev.track_no);
-    const wantT = _normalizeTrackTitle(ev.title || "");
-    const cards = document.querySelectorAll("#dl-track-status .track-status-card");
-    for (let i = 0; i < cards.length; i++) {
-      const c = cards[i];
-      if (_normalizeTrackNo(c.dataset.trackNo) !== wantN) continue;
-      const tEl = c.querySelector(".track-status-title");
-      const ct = _normalizeTrackTitle((tEl && tEl.textContent) || "");
-      if (ct !== wantT) continue;
-      const da = (c.dataset.lyricAlbum || "").trim();
-      if (da) return da;
+    if (_historyStoreHost) {
+      return _historyStoreHost.lyricAlbumForTrackEv(ev);
     }
     return "";
   }
@@ -2300,216 +2143,14 @@
     });
   }
 
-  function _persistDownloadHistoryAfterResult(ev, resAlb) {
-    const ap = String(ev.audio_path || "").trim();
-    if (!ap || String(ev.status || "").toLowerCase() !== "downloaded") return;
-    const card = _ensureTrackStatusCard(
-      ev.track_no,
-      ev.title,
-      false,
-      undefined,
-      resAlb,
-    );
-    if (!card) return;
-    const tEl = card.querySelector(".track-status-title");
-    let coverUrl = "";
-    const img = card.querySelector(".track-status-art-img");
-    if (img && img.getAttribute("src")) {
-      coverUrl = img.getAttribute("src") || "";
-    }
-    const payload = {
-      audio_path: ap,
-      track_no: card.dataset.trackNo || String(ev.track_no || ""),
-      title: (tEl && tEl.textContent) || String(ev.title || ""),
-      cover_url: coverUrl,
-      lyric_artist: card.dataset.lyricArtist || "",
-      lyric_album: (card.dataset.lyricAlbum || resAlb || "").trim(),
-      duration_sec: parseInt(card.dataset.durationSec || "0", 10) || 0,
-      track_explicit:
-        card.dataset.trackExplicit === "1"
-          ? true
-          : card.dataset.trackExplicit === "0"
-            ? false
-            : null,
-      download_status: "downloaded",
-      download_detail: String(ev.detail || ""),
-      lyric_type: "",
-      lyric_provider: "",
-      lyric_confidence: "",
-    };
-    const sidEv = String(ev.slot_track_id || "").trim();
-    const ridEv = String(ev.release_album_id || "").trim();
-    if (sidEv) {
-      payload.slot_track_id = sidEv;
-      payload.pending_slot_cleanup_id = sidEv;
-    }
-    if (ridEv) payload.release_album_id = ridEv;
-    payload.attach_search_eligible = card.dataset.attachSearchEligible === "1";
-    const chip = card.querySelector(".lyrics-chip");
-    if (chip) {
-      const parts = (chip.className || "").split(/\s+/);
-      const lt = parts.find((c) =>
-        ["synced", "plain", "none", "error", "instrumental"].includes(c),
-      );
-      if (lt) payload.lyric_type = lt;
-      payload.lyric_destination = _normalizeLyricDestination(
-        chip.dataset.lyricDestination || "",
-      );
-    }
-    const tk = (card.dataset.trackKey || "").trim();
-    const rowSnap = tk ? _tsDbItemByKey.get(tk) : null;
-    if (rowSnap && !payload.lyric_type) {
-      const snapLt = String(rowSnap.lyric_type || "").toLowerCase();
-      if (snapLt && snapLt !== "loading") {
-        payload.lyric_type = snapLt;
-        payload.lyric_provider = String(rowSnap.lyric_provider || "");
-        payload.lyric_confidence = String(rowSnap.lyric_confidence || "");
-        payload.lyric_destination = _normalizeLyricDestination(
-          rowSnap.lyric_destination || "",
-        );
-      }
-    }
-    _tsRegisterAudioPathAlbum(ap, (payload.lyric_album || "").trim());
-    void api.historyApi.upsert(payload).catch(() => {});
-  }
-
-  function _persistPendingSlotDownloadHistory(ev, preCard, resAlb) {
-    const sid = String(ev.slot_track_id || "").trim();
-    const rid = String(ev.release_album_id || "").trim();
-    const st = String(ev.status || "").toLowerCase();
-    if (
-      !preCard ||
-      !sid ||
-      !rid ||
-      (st !== "purchase_only" && st !== "failed")
-    ) {
-      return;
-    }
-    const tEl = preCard.querySelector(".track-status-title");
-    const img = preCard.querySelector(".track-status-art-img");
-    let coverUrl = "";
-    if (img && img.getAttribute("src")) {
-      coverUrl = img.getAttribute("src") || "";
-    }
-    const payload = {
-      audio_path: _GUI_PENDING_AUDIO_PREFIX + sid,
-      track_no: preCard.dataset.trackNo || String(ev.track_no || ""),
-      title: (tEl && tEl.textContent) || String(ev.title || ""),
-      cover_url: coverUrl,
-      lyric_artist: preCard.dataset.lyricArtist || "",
-      lyric_album: (preCard.dataset.lyricAlbum || resAlb || "").trim(),
-      duration_sec: parseInt(preCard.dataset.durationSec || "0", 10) || 0,
-      track_explicit:
-        preCard.dataset.trackExplicit === "1"
-          ? true
-          : preCard.dataset.trackExplicit === "0"
-            ? false
-            : null,
-      download_status: st,
-      download_detail: String(ev.detail || ""),
-      lyric_type: "",
-      lyric_provider: "",
-      lyric_confidence: "",
-      lyric_destination: "",
-      slot_track_id: sid,
-      release_album_id: rid,
-      attach_search_eligible: true,
-    };
-    const chip = preCard.querySelector(".lyrics-chip");
-    if (chip) {
-      const parts = (chip.className || "").split(/\s+/);
-      const lt = parts.find((c) =>
-        ["synced", "plain", "none", "error", "instrumental"].includes(c),
-      );
-      if (lt) payload.lyric_type = lt;
-      payload.lyric_destination = _normalizeLyricDestination(
-        chip.dataset.lyricDestination || "",
-      );
-    }
-    void api.historyApi.upsert(payload).catch(() => {});
-  }
-
-  async function _hydrateDownloadHistoryFromDb() {
-    const list = document.getElementById("dl-track-status");
-    if (!list) return;
-    try {
-      const res = await api.historyApi.list();
-      const data = await res.json();
-      if (!data.ok || !Array.isArray(data.items)) return;
-      const items = _tsSortHistoryItemsForDisplay(data.items);
-      const stick = _scrollContainerAtBottom(list);
-
-      _tsSkipHistoryFilterApply = true;
-      try {
-        if (_historyVirtHost) _historyVirtHost.teardownVirtScroller();
-        _trackStatusMap.clear();
-        _tsOrderAll = [];
-        _tsOrder = [];
-        _tsKeyToIndex.clear();
-        _tsDbItemByKey.clear();
-        _tsAudioPathAlbum.clear();
-        _tsActiveDlKeys.clear();
-        list.innerHTML = "";
-
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          const alb = (it.lyric_album || "").trim();
-          const parsed = _parseTrackRef(it.track_no || "", it.title || "");
-          const key = _trackKey(parsed.trackNo, parsed.title, alb);
-          _tsOrderAll.push(key);
-          _tsDbItemByKey.set(key, it);
-          const ap = (it.audio_path || "").trim();
-          if (ap && !ap.startsWith(_GUI_PENDING_AUDIO_PREFIX)) {
-            _tsRegisterAudioPathAlbum(ap, alb);
-          }
-        }
-
-        if (items.length >= _TS_VIRT_THRESHOLD && _historyVirtHost) {
-          _historyVirtHost.activateForList(list);
-        }
-      } finally {
-        _tsSkipHistoryFilterApply = false;
-      }
-
-      _tsApplyHistoryFilter();
-
-      if (items.length >= _TS_VIRT_THRESHOLD && _historyVirtHost) {
-        _historyVirtHost.runInitialRenderPass(list, stick);
-      } else {
-        _tsSkipHistoryFilterApply = true;
-        try {
-          for (let i = 0; i < items.length; i++) {
-            _tsApplyHistoryDbItemToNewCard(items[i]);
-          }
-        } finally {
-          _tsSkipHistoryFilterApply = false;
-        }
-        _tsApplyHistoryFilter();
-        if (stick) list.scrollTop = list.scrollHeight;
-      }
-    } catch (_) {
-      _tsSkipHistoryFilterApply = false;
-    }
-  }
-
   async function _resetTrackStatusCards() {
     _closeLyricSearchModal();
-    try {
-      await api.historyApi.clear();
-    } catch (_) {
-      /* ignore */
-    }
     const list = document.getElementById("dl-track-status");
-    if (!list) return;
-    if (_historyVirtHost) _historyVirtHost.teardownVirtScroller();
-    _tsOrderAll = [];
-    _tsOrder = [];
-    _tsKeyToIndex.clear();
-    _tsDbItemByKey.clear();
-    _tsAudioPathAlbum.clear();
-    _tsActiveDlKeys.clear();
-    list.innerHTML = "";
-    _trackStatusMap.clear();
+    if (_historyStoreHost) {
+      await _historyStoreHost.clearServerAndLocal(list);
+    } else if (list) {
+      _tsResetListForHydrate(list);
+    }
     _queueHost.refreshAlbumQueueCardMetas();
     _tsUpdateErrorHistoryCountBadge();
   }
@@ -2829,7 +2470,7 @@
 
   function initDownload() {
     _queueHost = QG.features.queue.internals.bootstrap({
-      getTrackStatusMap: () => _tsDbItemByKey,
+      getTrackStatusMap: _getHistoryDbMap,
       guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
       syncSearchQueuedHighlights: _syncSearchQueuedHighlights,
     });
@@ -2844,7 +2485,7 @@
           getOrder: () => _tsOrder,
           getKeyToIndex: () => _tsKeyToIndex,
           getCardMap: () => _trackStatusMap,
-          getDbItemByKey: () => _tsDbItemByKey,
+          getDbItemByKey: _getHistoryDbMap,
           getActiveDlKeys: () => _tsActiveDlKeys,
           mountDbItemAtIndex: _tsMountDbItemAtIndex,
         });
@@ -2858,7 +2499,7 @@
         guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
         getActiveDlKeys: () => _tsActiveDlKeys,
         getCardMap: () => _trackStatusMap,
-        getDbItemByKey: () => _tsDbItemByKey,
+        getDbItemByKey: _getHistoryDbMap,
         getOrderAll: () => _tsOrderAll,
         getOrder: () => _tsOrder,
         setOrder: (order) => {
@@ -2919,6 +2560,41 @@
         openAttachTrackPopover: _openAttachTrackPopover,
         syncResolutionButtonStates: _syncResolutionButtonStates,
       });
+    }
+    if (
+      QG.features.history &&
+      QG.features.history.internals &&
+      typeof QG.features.history.internals.bootstrapHydratePersist ===
+        "function"
+    ) {
+      _historyStoreHost =
+        QG.features.history.internals.bootstrapHydratePersist({
+          guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
+          virtThreshold: _TS_VIRT_THRESHOLD,
+          ensureTrackStatusCard: _ensureTrackStatusCard,
+          setTrackDownloadChip: _setTrackDownloadChip,
+          setTrackLyricsChip: _setTrackLyricsChip,
+          setTrackContentRatingBadge: _setTrackContentRatingBadge,
+          normalizeLyricDestination: _normalizeLyricDestination,
+          applyHistoryFilter: _tsApplyHistoryFilter,
+          getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
+          setSkipHistoryFilterApply: (v) => {
+            _tsSkipHistoryFilterApply = v;
+          },
+          resetListForHydrate: _tsResetListForHydrate,
+          pushOrderAllKey: (key) => {
+            if (!_tsOrderAll.includes(key)) _tsOrderAll.push(key);
+          },
+          scrollContainerAtBottom: _scrollContainerAtBottom,
+          activateVirtForList: (list) => {
+            if (_historyVirtHost) _historyVirtHost.activateForList(list);
+          },
+          runVirtInitialRenderPass: (list, stick) => {
+            if (_historyVirtHost) {
+              _historyVirtHost.runInitialRenderPass(list, stick);
+            }
+          },
+        });
     }
     _queueHost.initUrlQueue();
     initCoverArtMutex("dl");
@@ -3286,17 +2962,27 @@
           }
         }
         if (st === "downloaded" && ap) {
-          _persistDownloadHistoryAfterResult(ev, resAlb);
+          if (_historyStoreHost) {
+            _historyStoreHost.persistDownloadHistoryAfterResult(ev, resAlb);
+          }
         } else if (
           preCard &&
           sidTrim &&
           ridTrim &&
           ((isPurchase && detail) || isFailed)
         ) {
-          _persistPendingSlotDownloadHistory(ev, preCard, resAlb);
+          if (_historyStoreHost) {
+            _historyStoreHost.persistPendingSlotDownloadHistory(
+              ev,
+              preCard,
+              resAlb,
+            );
+          }
         }
         if (preCard) {
-          _tsStoreDbItemFromTrackResult(ev, resAlb, preCard);
+          if (_historyStoreHost) {
+            _historyStoreHost.storeDbItemFromTrackResult(ev, resAlb, preCard);
+          }
           if (preCard.dataset.trackKey) {
             _tsActiveDlKeys.delete(preCard.dataset.trackKey);
           }
@@ -3329,8 +3015,8 @@
       } else if (ev.type === "track_lyrics") {
         let albLy = "";
         const apEv = String(ev.audio_path || "").trim();
-        if (apEv && _tsAudioPathAlbum.has(apEv)) {
-          albLy = _tsAudioPathAlbum.get(apEv) || "";
+        if (_historyStoreHost) {
+          albLy = _historyStoreHost.lyricAlbumForAudioPath(apEv);
         }
         if (!albLy && apEv) {
           const cards = document.querySelectorAll(
@@ -3358,18 +3044,10 @@
           _normalizeTrackTitle(ev.title || ""),
           albLy,
         );
-        const rowSnap = lk ? _tsDbItemByKey.get(lk) : null;
-        if (rowSnap) {
-          rowSnap.lyric_type = String(ev.lyric_type || "none").toLowerCase();
-          rowSnap.lyric_provider =
-            ev.provider != null ? String(ev.provider) : "";
-          rowSnap.lyric_confidence =
-            ev.confidence != null && String(ev.confidence).trim() !== ""
-              ? String(ev.confidence).trim()
-              : "";
-          rowSnap.lyric_destination = _normalizeLyricDestination(
-            ev.lyric_destination || "",
-          );
+        if (
+          _historyStoreHost &&
+          _historyStoreHost.updateLyricSnapForKey(lk, ev)
+        ) {
           _hist().applyFilter();
         }
       } else if (ev.type === "url_done") {
@@ -3619,7 +3297,9 @@
     ) {
       QG.features.history.install({
         countDownloadedForRelease: (rid) =>
-          _queueHost ? _queueHost.countHistoryDownloadedForRelease(rid) : 0,
+          _historyStoreHost
+            ? _historyStoreHost.countDownloadedForRelease(rid)
+            : 0,
         applyFilter: _tsApplyHistoryFilter,
         ensureTrackCard: _ensureTrackStatusCard,
         setDownloadChip: _setTrackDownloadChip,
@@ -3629,7 +3309,9 @@
 
     void (async () => {
       await _queueHost.restoreFromServer();
-      await _hydrateDownloadHistoryFromDb();
+      if (_historyStoreHost) {
+        await _historyStoreHost.hydrateFromDb();
+      }
       _queueHost.refreshAlbumQueueCardMetas();
     })();
     window.QobuzGui.features.queue.install({
