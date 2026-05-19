@@ -32,18 +32,19 @@ Do not break these during extraction unless a failing test or broken route force
   19. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
   20. `/gui/js/features/queue/queueInternals.js` — **`QobuzGui.features.queue.internals.bootstrap(deps)`** returns queue host (`urlQueue`, persist/restore, cards, `_handleDrop*`)
   21. `/gui/js/features/history/historyController.js` — **`QobuzGui.features.history`** (`install`, `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`); no-op until `app.js` **`install`**
-  22. `/gui/js/features/history/historyFilters.js` — **`bootstrapFilters(deps)`** (All/Errors tab, error classification, badge)
-  23. `/gui/js/features/history/historyCardRendering.js` — **`bootstrapCardRendering(deps)`** (track-status card DOM, download/lyrics chips)
-  24. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
-  25. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
-  26. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
-  27. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **filter/card bootstraps** + **`features.history.install`**
+  22. `/gui/js/features/history/historyVirtualization.js` — **`bootstrapVirtualization(deps)`** (windowed DOM for large history lists)
+  23. `/gui/js/features/history/historyFilters.js` — **`bootstrapFilters(deps)`** (All/Errors tab, error classification, badge)
+  24. `/gui/js/features/history/historyCardRendering.js` — **`bootstrapCardRendering(deps)`** (track-status card DOM, download/lyrics chips)
+  25. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
+  26. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
+  27. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
+  28. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **virt/filter/card bootstraps** + **`features.history.install`**
 
 - **Optional later cleanup (non-goal until someone does it deliberately):** a more uniform mental order might be API → core → API extensions → shared UI → features → app. Today's order mixes `features`/`ui`/core somewhat for historical incremental extraction; reordering requires re-validating every cross-file assumption.
 
 ### Search vs queue lifecycle
 
-`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`historyController.js`** defines the **`features.history`** façade (stable methods + **`install(impl)`**); **`historyCardRendering.js`** implements card/chip DOM via **`bootstrapCardRendering(deps)`**. **`app.js`** passes real implementations from in-scope helpers after `_queueHost` exists. **`initDownload()`** calls queue **`bootstrap(...)`**, then history **card bootstrap**, then **guarded** **`features.history.install`**, then **`features.queue.install`**, then search **`init()`** from main **`init()`**.
+`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`historyController.js`** defines the **`features.history`** façade (stable methods + **`install(impl)`**); **`historyVirtualization.js`**, **`historyFilters.js`**, and **`historyCardRendering.js`** implement virt scroller, filter tabs, and card/chip DOM via **`bootstrap*`** helpers. **`app.js`** passes real implementations from in-scope helpers after `_queueHost` exists. **`initDownload()`** calls queue **`bootstrap(...)`**, then history **virt → filter → card bootstraps**, then **guarded** **`features.history.install`**, then **`features.queue.install`**, then search **`init()`** from main **`init()`**.
 
 ## Namespace rule
 
@@ -56,6 +57,7 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.queue` (`queueController.js` + **`install`** wired from `initDownload`)
   - `QobuzGui.features.queue.internals.bootstrap` (`js/features/queue/queueInternals.js`) — **`deps`:** `getTrackStatusMap()`, `guiPendingAudioPrefix`, `syncSearchQueuedHighlights`; exposes URL queue state/helpers including `countHistoryDownloadedForRelease`, `calcProgressDenominatorFromQueue`; invoked once from **`initDownload()`**
   - `QobuzGui.features.history` (`js/features/history/historyController.js`) — **`install(impl)`** from **`initDownload()`** (guarded so a missing script does not throw). Public: `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`. **Transitional (H1):** `countDownloadedForRelease` in **`install`** still uses `_queueHost.countHistoryDownloadedForRelease(rid)` (history-shaped count without moving `_tsDbItemByKey` yet). **Planned (H6):** history owns that count; remove the queue-host hop.
+  - `QobuzGui.features.history.internals.bootstrapVirtualization` (`js/features/history/historyVirtualization.js`) — **`deps`:** order/key/card/db maps, active download keys, **`mountDbItemAtIndex(it, index)`** callback; returns virt scroller API (`isVirtActive`, `appendParent`, `teardownVirtScroller`, `activateForList`, `runInitialRenderPass`, etc.); invoked once from **`initDownload()`** before filter/card bootstraps
   - `QobuzGui.features.history.internals.bootstrapCardRendering` (`js/features/history/historyCardRendering.js`) — **`deps`:** card map, virt scroller hooks, filter apply, attach-track substitute callbacks; returns `ensureTrackStatusCard`, `setTrackDownloadChip`, `setTrackLyricsChip`, etc.; **`app.js`** keeps thin `_`-prefixed delegates wired into **`history.install`**
   - `QobuzGui.features.history.internals.bootstrapFilters` (`js/features/history/historyFilters.js`) — **`deps`:** card/db maps, order arrays, virt hooks, pending-audio prefix; returns `applyFilter`, `updateErrorHistoryCountBadge`, `initDownloadHistorySegment`; tab UI calls local `applyFilter` (not façade loop)
   - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.

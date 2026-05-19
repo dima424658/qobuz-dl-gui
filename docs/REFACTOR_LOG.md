@@ -547,6 +547,26 @@ Commit: pending
 - Filter tab clicks call module-local **`applyFilter`** directly (avoids façade loop during init).
 - Next: **H5** virtualization extraction.
 
+## Checkpoint H5 - History virtualization (`historyVirtualization.js`)
+
+Date: 2026-05-18  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/historyVirtualization.js`: **`bootstrapVirtualization(deps)`** owns virt inner container, scroll/resize listeners, row-height measurement, windowed render/evict, lyric-search anchor pinning, and initial render pass.
+- **`app.js`:** removed inline virt scroller state/helpers (~140 lines); **`initDownload()`** bootstraps virt before filters/cards; hydrate/reset/SSE paths use **`_historyVirtHost`**; **`_tsMountDbItemAtIndex`** remains in **`app.js`** (card build + DB apply) and is passed as a dep callback.
+- **`index.html`:** `historyVirtualization.js` after `historyController.js`; **`app.js?v=85`**.
+
+### Validation
+
+- `node --check` on `historyVirtualization.js` and `app.js`; `python -m unittest discover -s tests`.
+
+### Notes
+
+- **`_tsRebuildKeyIndex`** stays in **`app.js`** (shared by filters + virt).
+- Next: **H6** hydrate/persist extraction; history owns **`_tsDbItemByKey`** semantics.
+
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
