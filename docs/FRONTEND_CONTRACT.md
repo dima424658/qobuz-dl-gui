@@ -31,16 +31,17 @@ Do not break these during extraction unless a failing test or broken route force
   18. `/gui/js/features/settings/downloadOptionsAutosave.js` — `QobuzGui.features.settings.downloadOptionsAutosave.bind()`
   19. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
   20. `/gui/js/features/queue/queueInternals.js` — **`QobuzGui.features.queue.internals.bootstrap(deps)`** returns queue host (`urlQueue`, persist/restore, cards, `_handleDrop*`)
-  21. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
-  22. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
-  23. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
-  24. `/gui/app.js` — **`bootstrap` once** inside `initDownload()`, then `features.queue.install`; registers `features.history` (delegates downloaded-count into queue internals)
+  21. `/gui/js/features/history/historyController.js` — **`QobuzGui.features.history`** (`install`, `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`); no-op until `app.js` **`install`**
+  22. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
+  23. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
+  24. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
+  25. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + **`features.history.install`** (guarded) + **`features.queue.install`** + registers `features.history` impl closures on the façade
 
 - **Optional later cleanup (non-goal until someone does it deliberately):** a more uniform mental order might be API → core → API extensions → shared UI → features → app. Today's order mixes `features`/`ui`/core somewhat for historical incremental extraction; reordering requires re-validating every cross-file assumption.
 
 ### Search vs queue lifecycle
 
-`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`app.js`** passes `getTrackStatusMap` (same `_tsDbItemByKey` as track-status list) plus `guiPendingAudioPrefix` and `syncSearchQueuedHighlights()` so queue↔album “remaining” maths and badges stay coherent. **`initDownload()`** calls `bootstrap(...)` exactly once **before** `features.queue.install` and search `init()`.
+`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`historyController.js`** defines the **`features.history`** façade (stable methods + **`install(impl)`**); **`app.js`** passes real implementations from in-scope helpers after `_queueHost` exists. **`app.js`** passes `getTrackStatusMap` into queue bootstrap (same `_tsDbItemByKey` as track-status list) plus `guiPendingAudioPrefix` and `syncSearchQueuedHighlights()` so queue↔album “remaining” maths and badges stay coherent. **`initDownload()`** calls queue **`bootstrap(...)`** exactly once, then **guarded** **`features.history.install`** (if the script loaded), then **`features.queue.install`**, then search **`init()`** from main **`init()`**.
 
 ## Namespace rule
 
@@ -52,7 +53,8 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.search` (`js/features/search/searchController.js`)
   - `QobuzGui.features.queue` (`queueController.js` + **`install`** wired from `initDownload`)
   - `QobuzGui.features.queue.internals.bootstrap` (`js/features/queue/queueInternals.js`) — **`deps`:** `getTrackStatusMap()`, `guiPendingAudioPrefix`, `syncSearchQueuedHighlights`; exposes URL queue state/helpers including `countHistoryDownloadedForRelease`, `calcProgressDenominatorFromQueue`; invoked once from **`initDownload()`**
-  - `QobuzGui.features.history` (**registered from `app.js`** after download wiring; **`countDownloadedForRelease`** delegates into queue internals)  - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.
+  - `QobuzGui.features.history` (`js/features/history/historyController.js`) — **`install(impl)`** from **`initDownload()`** (guarded so a missing script does not throw). Public: `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`. **Transitional (H1):** `countDownloadedForRelease` in **`install`** still uses `_queueHost.countHistoryDownloadedForRelease(rid)` (history-shaped count without moving `_tsDbItemByKey` yet). **Planned (H6):** history owns that count; remove the queue-host hop.
+  - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.
   - **`QobuzGui.features.feedback.issueReport`** (`js/features/feedback/issueReportSubsystem.js`): `init(checkStatus)` — settings gear popover, issue-report / sent-history UX, worker submit endpoint, logs modal (**invoked from `app.js`** `initSettings()` so `checkStatus` stays in-scope).
   - **`QobuzGui.features.lyrics.lyricOutputSettings`** (`js/features/lyrics/lyricOutputSettings.js`): download ↔ settings lyric toggles sync and `/api/config` persist.
 - Do not introduce unrelated globals except the compatibility adapters listed below.

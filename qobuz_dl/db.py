@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -342,9 +343,15 @@ def upsert_gui_download_history(
                 "lyric_artist=excluded.lyric_artist, lyric_album=excluded.lyric_album, "
                 "duration_sec=excluded.duration_sec, track_explicit=excluded.track_explicit, "
                 "download_status=excluded.download_status, download_detail=excluded.download_detail, "
-                "lyric_type=excluded.lyric_type, lyric_provider=excluded.lyric_provider, "
-                "lyric_confidence=excluded.lyric_confidence, "
-                "lyric_destination=excluded.lyric_destination, updated_at=excluded.updated_at, "
+                "lyric_type=CASE WHEN trim(excluded.lyric_type)!='' THEN excluded.lyric_type "
+                "ELSE gui_download_history.lyric_type END, "
+                "lyric_provider=CASE WHEN trim(excluded.lyric_provider)!='' THEN excluded.lyric_provider "
+                "ELSE gui_download_history.lyric_provider END, "
+                "lyric_confidence=CASE WHEN trim(excluded.lyric_confidence)!='' THEN excluded.lyric_confidence "
+                "ELSE gui_download_history.lyric_confidence END, "
+                "lyric_destination=CASE WHEN trim(excluded.lyric_destination)!='' THEN excluded.lyric_destination "
+                "ELSE gui_download_history.lyric_destination END, "
+                "updated_at=excluded.updated_at, "
                 "slot_track_id=excluded.slot_track_id, "
                 "release_album_id=excluded.release_album_id, "
                 "attach_search_eligible=excluded.attach_search_eligible",
@@ -381,6 +388,49 @@ def upsert_gui_download_history(
         logger.error(f"{RED}download history upsert: {e}")
 
 
+def _lyric_meta_from_sidecar(audio_path: str) -> tuple[str, str]:
+    """Infer lyric_type and destination from an on-disk ``.lrc`` sidecar."""
+    ap = (audio_path or "").strip()
+    if not ap or not os.path.isfile(ap):
+        return "", ""
+    base, _ = os.path.splitext(ap)
+    lrc_path = base + ".lrc"
+    if not os.path.isfile(lrc_path):
+        return "", ""
+    try:
+        with open(lrc_path, "r", encoding="utf-8", errors="replace") as f:
+            body = f.read()
+    except OSError:
+        return "", ""
+    from qobuz_dl import lyrics as lyrics_mod
+
+    lt = lyrics_mod._lyrics_type(body)
+    if lt in ("none", ""):
+        return "", ""
+    return lt, "lrc"
+
+
+def _title_guess_from_audio_path(audio_path: str) -> str:
+    """Best-effort title from a downloaded filename (``01 - Title.flac``)."""
+    base = os.path.basename((audio_path or "").strip())
+    if not base:
+        return "Track"
+    stem, _ = os.path.splitext(base)
+    if not stem:
+        return "Track"
+    m = re.match(r"^\s*\d+\s*[-–.]?\s*(.+)\s*$", stem)
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    return stem.strip() or "Track"
+
+
+def _track_no_guess_from_audio_path(audio_path: str) -> str:
+    base = os.path.basename((audio_path or "").strip())
+    stem, _ = os.path.splitext(base)
+    m = re.match(r"^\s*(\d+)\s*", stem or "")
+    return m.group(1) if m else ""
+
+
 def update_gui_download_history_lyrics(
     audio_path: str,
     *,
@@ -401,7 +451,7 @@ def update_gui_download_history_lyrics(
     try:
         with sqlite3.connect(dbp) as conn:
             _ensure_gui_download_history_table(conn)
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE gui_download_history SET lyric_type=?, lyric_provider=?, "
                 "lyric_confidence=?, lyric_destination=?, updated_at=? WHERE audio_path=?",
                 (
@@ -413,6 +463,36 @@ def update_gui_download_history_lyrics(
                     p,
                 ),
             )
+            if cur.rowcount == 0:
+                title = _title_guess_from_audio_path(p)
+                track_no = _track_no_guess_from_audio_path(p)
+                row = conn.execute(
+                    "SELECT COALESCE(MAX(history_seq), 0) + 1 FROM gui_download_history",
+                ).fetchone()
+                next_hist = int(row[0]) if row and row[0] is not None else 1
+                conn.execute(
+                    "INSERT INTO gui_download_history ("
+                    "audio_path, track_no, title, download_status, "
+                    "lyric_type, lyric_provider, lyric_confidence, lyric_destination, "
+                    "updated_at, history_seq"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(audio_path) DO UPDATE SET "
+                    "lyric_type=excluded.lyric_type, lyric_provider=excluded.lyric_provider, "
+                    "lyric_confidence=excluded.lyric_confidence, "
+                    "lyric_destination=excluded.lyric_destination, updated_at=excluded.updated_at",
+                    (
+                        p,
+                        track_no,
+                        title,
+                        "downloaded",
+                        lyric_type,
+                        lyric_provider,
+                        lyric_confidence,
+                        lyric_destination,
+                        now,
+                        next_hist,
+                    ),
+                )
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"{RED}download history lyrics update: {e}")
@@ -482,6 +562,21 @@ def list_gui_download_history() -> list:
                 sid_db = (r[15] or "").strip() if len(r) > 15 else ""
                 rid_db = (r[16] or "").strip() if len(r) > 16 else ""
                 attach_eligible = bool(int(r[17] or 0)) if len(r) > 17 else False
+                lyric_type = r[10] or ""
+                lyric_provider = r[11] or ""
+                lyric_confidence = r[12] or ""
+                lyric_destination = r[13] or ""
+                if not (lyric_type or "").strip():
+                    side_lt, side_dest = _lyric_meta_from_sidecar(ap)
+                    if side_lt:
+                        lyric_type = side_lt
+                        if not (lyric_destination or "").strip():
+                            lyric_destination = side_dest
+                        conn.execute(
+                            "UPDATE gui_download_history SET lyric_type=?, lyric_destination=? "
+                            "WHERE audio_path=? AND (lyric_type IS NULL OR trim(lyric_type)='')",
+                            (lyric_type, lyric_destination, ap),
+                        )
                 out.append(
                     {
                         "audio_path": ap,
@@ -496,10 +591,10 @@ def list_gui_download_history() -> list:
                         else None,
                         "download_status": r[8] or "downloaded",
                         "download_detail": r[9] or "",
-                        "lyric_type": r[10] or "",
-                        "lyric_provider": r[11] or "",
-                        "lyric_confidence": r[12] or "",
-                        "lyric_destination": r[13] or "",
+                        "lyric_type": lyric_type,
+                        "lyric_provider": lyric_provider,
+                        "lyric_confidence": lyric_confidence,
+                        "lyric_destination": lyric_destination,
                         "updated_at": r[14],
                         "slot_track_id": sid_db,
                         "release_album_id": rid_db,

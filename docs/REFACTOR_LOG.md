@@ -468,6 +468,45 @@ Commit: pending
 
 - `tools/_patch_app_queue_internals.py` and `tools/_gen_queue_internals.py` document the splice for future peels (e.g. download runtime only).
 
+## Checkpoint H1 - History façade (`historyController.js`)
+
+Date: 2026-05-14  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/historyController.js`: **`QobuzGui.features.history`** with **`install(impl)`** plus forwards (`countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`). Safe defaults when **`install`** has not run.
+- **`app.js`:** removed inline `features.history = { countDownloadedForRelease, applyFilter }`; **guarded** **`QG.features.history.install({...})`** after `_queueHost` bootstrap — `countDownloadedForRelease`: `(rid) => (_queueHost ? _queueHost.countHistoryDownloadedForRelease(rid) : 0)`; other fields point at existing `_ensureTrackStatusCard`, `_setTrackDownloadChip`, `_setTrackLyricsChip`, `_tsApplyHistoryFilter`.
+- **`index.html`:** `historyController.js` after **`queueInternals.js`**, before search; **`app.js?v=78`**.
+
+### Validation
+
+- `node --check` on `historyController.js` and `app.js`; `python -m unittest discover -s tests`.
+
+### Notes
+
+- **Transitional:** per-release download count still flows through **`_queueHost.countHistoryDownloadedForRelease`** until history truly owns `_tsDbItemByKey` semantics (planned **H6**). Documented in **`FRONTEND_CONTRACT.md`**.
+- H1 is **seam + contract** only; internal call sites still use `_ensureTrackStatusCard` etc. until a later **H2** migration.
+
+## Checkpoint H2 - Internal call sites via `features.history`
+
+Date: 2026-05-14  
+Commit: pending
+
+### What changed
+
+- **`app.js`:** added **`_hist()`** → `QG.features.history`. Migrated external call sites to **`_hist().applyFilter()`**, **`ensureTrackCard`**, **`setDownloadChip`**, **`setLyricsChip`** (history tabs, hydrate/mount, SSE `track_*` handlers, lyric attach, persist helper).
+- **Left direct** `_ensureTrackStatusCard` / `_setTrackDownloadChip` / `_setTrackLyricsChip` / `_tsApplyHistoryFilter` as **implementations** wired into **`history.install`**; impl bodies still call each other directly (no facade loop inside chip/card helpers).
+
+### Validation
+
+- `node --check` on `app.js`; `python -m unittest discover -s tests` passed.
+
+### Notes
+
+- **`countDownloadedForRelease`** still transitional via queue host (unchanged; **H6**).
+- Next: **H3** track status card rendering extraction.
+
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 

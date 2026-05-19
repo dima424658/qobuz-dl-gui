@@ -31,6 +31,10 @@
     }
   }
 
+  function _hist() {
+    return QG.features.history;
+  }
+
   let _queueHost = null;
 
   let _sse = null;
@@ -278,7 +282,7 @@
       errBtn.setAttribute("aria-selected", allOn ? "false" : "true");
       allBtn.tabIndex = allOn ? 0 : -1;
       errBtn.tabIndex = allOn ? -1 : 0;
-      _tsApplyHistoryFilter();
+      _hist().applyFilter();
       if (list) list.scrollTop = 0;
     };
     allBtn.addEventListener("click", () => applyMode("all"));
@@ -2825,7 +2829,7 @@
         const tTitle = ((tEl && tEl.textContent) || "").trim();
         const tNo = (anchor.dataset.trackNo || "").trim();
         if (tNo && tTitle) {
-          _setTrackLyricsChip(
+          _hist().setLyricsChip(
             tNo,
             tTitle,
             lyricTypeRaw,
@@ -3107,6 +3111,19 @@
       payload.lyric_destination = _normalizeLyricDestination(
         chip.dataset.lyricDestination || "",
       );
+    }
+    const tk = (card.dataset.trackKey || "").trim();
+    const rowSnap = tk ? _tsDbItemByKey.get(tk) : null;
+    if (rowSnap && !payload.lyric_type) {
+      const snapLt = String(rowSnap.lyric_type || "").toLowerCase();
+      if (snapLt && snapLt !== "loading") {
+        payload.lyric_type = snapLt;
+        payload.lyric_provider = String(rowSnap.lyric_provider || "");
+        payload.lyric_confidence = String(rowSnap.lyric_confidence || "");
+        payload.lyric_destination = _normalizeLyricDestination(
+          rowSnap.lyric_destination || "",
+        );
+      }
     }
     _tsRegisterAudioPathAlbum(ap, (payload.lyric_album || "").trim());
     void api.historyApi.upsert(payload).catch(() => {});
@@ -3829,7 +3846,7 @@
           ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
             ? String(ev.lyric_album).trim()
             : "";
-        const _tcard = _ensureTrackStatusCard(
+        const _tcard = _hist().ensureTrackCard(
           trackNo,
           title,
           true,
@@ -3851,7 +3868,7 @@
           }
           if (_tcard.dataset.trackKey) _tsActiveDlKeys.add(_tcard.dataset.trackKey);
         }
-        _setTrackDownloadChip(
+        _hist().setDownloadChip(
           trackNo,
           title,
           "downloading",
@@ -3860,7 +3877,7 @@
           evAlb,
         );
         _updateProgress();
-        _tsApplyHistoryFilter();
+        _hist().applyFilter();
       } else if (ev.type === "track_download_progress") {
         const pa =
           ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
@@ -3891,7 +3908,7 @@
         const ap = String(ev.audio_path || "").trim();
         const sidTrim = String(ev.slot_track_id || "").trim();
         const ridTrim = String(ev.release_album_id || "").trim();
-        const preCard = _ensureTrackStatusCard(
+        const preCard = _hist().ensureTrackCard(
           ev.track_no,
           ev.title,
           false,
@@ -3915,7 +3932,7 @@
           _tsRegisterAudioPathAlbum(ap, resAlb);
         }
         if (isPurchase && detail) {
-          _setTrackDownloadChip(
+          _hist().setDownloadChip(
             ev.track_no,
             ev.title,
             "Album Purchase Only",
@@ -3929,7 +3946,7 @@
             resAlb,
           );
         } else {
-          _setTrackDownloadChip(
+          _hist().setDownloadChip(
             ev.track_no,
             ev.title,
             isFailed ? "failed" : "downloaded",
@@ -3996,7 +4013,7 @@
           _syncQueueCardPurchaseIssues(qurl);
         }
         _updateProgress();
-        _tsApplyHistoryFilter();
+        _hist().applyFilter();
         _queueHost.refreshAlbumQueueCardMetas();
       } else if (ev.type === "track_lyrics") {
         let albLy = "";
@@ -4016,7 +4033,7 @@
           }
         }
         if (!albLy) albLy = _lyricAlbumForTrackEv(ev);
-        _setTrackLyricsChip(
+        _hist().setLyricsChip(
           ev.track_no,
           ev.title,
           ev.lyric_type || "none",
@@ -4042,7 +4059,7 @@
           rowSnap.lyric_destination = _normalizeLyricDestination(
             ev.lyric_destination || "",
           );
-          _tsApplyHistoryFilter();
+          _hist().applyFilter();
         }
       } else if (ev.type === "url_done") {
         _dlDone++;
@@ -4282,21 +4299,28 @@
     _initLyricSearchModal();
     _initAttachTrackSearchPopover();
     _initDownloadHistorySegment();
+
+    window.QobuzGui.features = window.QobuzGui.features || {};
+    if (
+      QG.features &&
+      QG.features.history &&
+      typeof QG.features.history.install === "function"
+    ) {
+      QG.features.history.install({
+        countDownloadedForRelease: (rid) =>
+          _queueHost ? _queueHost.countHistoryDownloadedForRelease(rid) : 0,
+        applyFilter: _tsApplyHistoryFilter,
+        ensureTrackCard: _ensureTrackStatusCard,
+        setDownloadChip: _setTrackDownloadChip,
+        setLyricsChip: _setTrackLyricsChip,
+      });
+    }
+
     void (async () => {
       await _queueHost.restoreFromServer();
       await _hydrateDownloadHistoryFromDb();
       _queueHost.refreshAlbumQueueCardMetas();
     })();
-
-    window.QobuzGui.features = window.QobuzGui.features || {};
-    window.QobuzGui.features.history = {
-      countDownloadedForRelease(releaseAlbumId) {
-        return _queueHost.countHistoryDownloadedForRelease(releaseAlbumId);
-      },
-      applyFilter() {
-        return _tsApplyHistoryFilter();
-      },
-    };
     window.QobuzGui.features.queue.install({
       addUrl(url) {
         return _queueHost.addUrlToQueue(url);

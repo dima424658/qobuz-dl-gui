@@ -66,6 +66,72 @@ class GuiDownloadHistorySeqTests(unittest.TestCase):
         titles = [x["title"] for x in lst]
         self.assertEqual(titles, ["Track A", "Track B"])
 
+    @patch.object(db, "get_qobuz_db_path")
+    def test_upsert_preserves_existing_lyric_fields(self, mock_gp):
+        mock_gp.return_value = self.db_path
+
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+
+        pa = os.path.join(td.name, "a.flac")
+        with open(pa, "wb") as f:
+            f.write(b"f")
+
+        upsert_gui_download_history(
+            pa,
+            title="Track A",
+            lyric_type="synced",
+            lyric_provider="lrclib",
+            lyric_confidence="100",
+            lyric_destination="lrc",
+        )
+        upsert_gui_download_history(
+            pa,
+            title="Track A",
+            download_status="downloaded",
+            lyric_type="",
+            lyric_provider="",
+            lyric_confidence="",
+            lyric_destination="",
+        )
+
+        lst = list_gui_download_history()
+        self.assertEqual(len(lst), 1)
+        row = lst[0]
+        self.assertEqual(row["lyric_type"], "synced")
+        self.assertEqual(row["lyric_provider"], "lrclib")
+        self.assertEqual(row["lyric_confidence"], "100")
+        self.assertEqual(row["lyric_destination"], "lrc")
+
+    @patch.object(db, "get_qobuz_db_path")
+    def test_lyrics_update_creates_row_when_missing(self, mock_gp):
+        mock_gp.return_value = self.db_path
+
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+
+        pa = os.path.join(td.name, "01 - american dream.flac")
+        with open(pa, "wb") as f:
+            f.write(b"f")
+
+        update_gui_download_history_lyrics(
+            pa,
+            lyric_type="synced",
+            lyric_provider="Lrclib",
+            lyric_confidence="100",
+            lyric_destination="both",
+        )
+
+        lst = list_gui_download_history()
+        self.assertEqual(len(lst), 1)
+        row = lst[0]
+        self.assertEqual(row["title"], "american dream")
+        self.assertEqual(row["track_no"], "01")
+        self.assertEqual(row["lyric_type"], "synced")
+        self.assertEqual(row["lyric_provider"], "Lrclib")
+        self.assertEqual(row["lyric_confidence"], "100")
+        self.assertEqual(row["lyric_destination"], "both")
+
 
 if __name__ == "__main__":
     unittest.main()
