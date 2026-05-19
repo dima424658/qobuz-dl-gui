@@ -12,13 +12,8 @@
   const _TS_VIRT_THRESHOLD = _cgConst.TS_VIRT_THRESHOLD;
   const _TS_VIRT_OVERSCAN = _cgConst.TS_VIRT_OVERSCAN;
   const _ic = QG.core.icons;
-  const _TRACK_DL_ICON_SVG = _ic.trackDlIconSvg;
-  const _TRACK_SEARCH_ICON_SVG = _ic.trackSearchIconSvg;
-  const _TRACK_MISSING_NOTE_ICON_SVG = _ic.trackMissingNoteIconSvg;
   const _MISSING_PLACEHOLDER_BTN_TIP = _ic.missingPlaceholderBtnTip;
-  const _TRACK_FOLDER_ICON_SVG = _ic.trackFolderIconSvg;
   const _LYRIC_SEARCH_ATTACHED_SVG = _ic.lyricSearchAttachedSvg;
-  const _TRACK_DL_FAIL_SVG = _ic.trackDlFailSvg;
   const _EXPLICIT_BADGE_SVG = _ic.explicitBadgeSvg;
 
   function _lyricOut() {
@@ -36,6 +31,8 @@
   }
 
   let _queueHost = null;
+  /** H3 card rendering host (set in `initDownload()`). */
+  let _historyCardHost = null;
 
   let _sse = null;
   let _trackStatusMap = new Map();
@@ -55,8 +52,8 @@
   let _tsActiveDlKeys = new Set();
   /** audio_path → lyric_album (avoids scanning hundreds of DOM nodes). */
   let _tsAudioPathAlbum = new Map();
-  /** `"all"` | `"errors"`, error view shows purchase-only, failed, pending slots, lyric errors. */
-  let _tsHistoryFilterMode = "all";
+  /** `"all"` | `"errors"` — owned by history filter module after bootstrap. */
+  let _historyFilterHost = null;
   /** Skip redundant filter passes while bulk-loading history from DB. */
   let _tsSkipHistoryFilterApply = false;
 
@@ -104,49 +101,35 @@
     return QG.core.trackIdentity.trackKey(trackNo, title, lyricAlbum);
   }
 
-  /**
-   * `num + normalized-title` ignoring album suffix. Used while a row might be keyed
-   * with or without lyric_album (short TRACK_START vs hydrate) so transient error
-   * classification matches parallel / multi-queue downloads.
-   */
-  function _trackKeyStem(fullKey) {
-    return QG.core.trackIdentity.trackKeyStem(fullKey);
+  /** Stable display order on hydrate: album blocks keep API order; rows within an album sort by track #. */
+  function _tsSortHistoryItemsForDisplay(items) {
+    return items.slice().sort((a, b) => {
+      const albA = (a.lyric_album || "").trim().toLowerCase();
+      const albB = (b.lyric_album || "").trim().toLowerCase();
+      if (albA !== albB) return 0;
+      const na = parseInt(_normalizeTrackNo(a.track_no || "") || "0", 10) || 0;
+      const nb = parseInt(_normalizeTrackNo(b.track_no || "") || "0", 10) || 0;
+      if (na !== nb) return na - nb;
+      return String(a.title || "")
+        .trim()
+        .localeCompare(String(b.title || "").trim(), undefined, {
+          sensitivity: "base",
+        });
+    });
   }
 
-  function _tsMountedCardShowsDlTerminal(card) {
-    if (!card) return false;
-    return Boolean(
-      card.querySelector("a.download-chip.purchase-only") ||
-        card.querySelector("button.download-chip.track-dl-btn--failed"),
-    );
+  function _tsApplyHistoryFilter() {
+    if (_historyFilterHost) _historyFilterHost.applyFilter();
   }
 
-  /**
-   * One pass over `_tsActiveDlKeys` / mounted rows to classify history keys for Error tab churn.
-   * `unsettledStems`: download active or lyric refetch (`loading`), row outcome not final for UI yet.
-   * `dlTerminalErrStems`: a mounted row for that stem shows purchase-only / download-failed chip.
-   * Stale hydrate `.lyrics-chip.error` alone must NOT qualify during unsettled work (fixes flicker).
-   */
-  function _tsComputeErrorStemContext() {
-    const unsettledStems = new Set();
-    const dlTerminalErrStems = new Set();
-    for (const k of _tsActiveDlKeys) {
-      const st = _trackKeyStem(k);
-      if (st) unsettledStems.add(st);
+  function _tsUpdateErrorHistoryCountBadge(optStemCtx) {
+    if (_historyFilterHost) {
+      _historyFilterHost.updateErrorHistoryCountBadge(optStemCtx);
     }
-    for (const k of _trackStatusMap.keys()) {
-      const card = _trackStatusMap.get(k);
-      if (!card) continue;
-      const st = _trackKeyStem(k);
-      if (!st) continue;
-      if (card.querySelector(".lyrics-chip.loading")) unsettledStems.add(st);
-      const dlBtn = card.querySelector(
-        "button.download-chip.track-dl-btn.track-dl-btn--active",
-      );
-      if (dlBtn) unsettledStems.add(st);
-      if (_tsMountedCardShowsDlTerminal(card)) dlTerminalErrStems.add(st);
-    }
-    return { unsettledStems, dlTerminalErrStems };
+  }
+
+  function _initDownloadHistorySegment() {
+    if (_historyFilterHost) _historyFilterHost.initDownloadHistorySegment();
   }
 
   function _tsRegisterAudioPathAlbum(audioPath, lyricAlbum) {
@@ -160,133 +143,6 @@
     for (let i = 0; i < _tsOrder.length; i++) {
       _tsKeyToIndex.set(_tsOrder[i], i);
     }
-  }
-
-  /** Download / purchase placeholders only (excludes lyric sidecar failures). */
-  function _tsDbDownloadOutcomeError(it) {
-    if (!it) return false;
-    const st = String(it.download_status || "").toLowerCase();
-    if (st === "purchase_only" || st === "failed") return true;
-    const ap = String(it.audio_path || "").trim();
-    return ap.startsWith(_GUI_PENDING_AUDIO_PREFIX);
-  }
-
-  function _tsDbItemIsError(it) {
-    if (_tsDbDownloadOutcomeError(it)) return true;
-    const lt = String(it.lyric_type || "").toLowerCase();
-    return lt === "error";
-  }
-
-  function _tsCardLooksLikeError(card) {
-    if (!card) return false;
-    if (_tsMountedCardShowsDlTerminal(card)) return true;
-    if (card.querySelector(".lyrics-chip.error")) return true;
-    return false;
-  }
-
-  function _tsKeyIsErrorInCurrentSession(key, stemCtx /* optional result of _tsComputeErrorStemContext */) {
-    const ctx = stemCtx || _tsComputeErrorStemContext();
-    const stem = key ? _trackKeyStem(key) : "";
-    if (stem && ctx.unsettledStems.has(stem)) {
-      return ctx.dlTerminalErrStems.has(stem);
-    }
-    const card = key ? _trackStatusMap.get(key) : null;
-    const dlGlobally =
-      typeof window !== "undefined" && Boolean(window.isDownloading);
-    if (dlGlobally) {
-      if (_tsDbDownloadOutcomeError(_tsDbItemByKey.get(key))) return true;
-      if (_tsMountedCardShowsDlTerminal(card)) return true;
-      return false;
-    }
-    if (_tsDbItemIsError(_tsDbItemByKey.get(key))) return true;
-    return _tsCardLooksLikeError(card);
-  }
-
-  function _tsUpdateErrorHistoryCountBadge(optStemCtx) {
-    const badge = document.getElementById("dl-history-errors-count");
-    if (!badge) return;
-    const stemCtx = optStemCtx != null ? optStemCtx : _tsComputeErrorStemContext();
-    let n = 0;
-    for (let i = 0; i < _tsOrderAll.length; i++) {
-      if (_tsKeyIsErrorInCurrentSession(_tsOrderAll[i], stemCtx)) n++;
-    }
-    if (n === 0) {
-      badge.classList.add("hidden");
-      badge.textContent = "";
-      badge.removeAttribute("aria-label");
-    } else {
-      badge.classList.remove("hidden");
-      badge.textContent = String(n);
-      badge.setAttribute(
-        "aria-label",
-        `${n} error entr${n === 1 ? "y" : "ies"} in download history`,
-      );
-    }
-  }
-
-  function _tsApplyHistoryFilter() {
-    if (_tsSkipHistoryFilterApply) return;
-    const stemCtx = _tsComputeErrorStemContext();
-    const list = document.getElementById("dl-track-status");
-    if (_tsVirtActive && _tsVirtInnerEl && list) {
-      if (_tsHistoryFilterMode === "errors") {
-        _tsOrder = _tsOrderAll.filter((k) =>
-          _tsKeyIsErrorInCurrentSession(k, stemCtx),
-        );
-      } else {
-        _tsOrder = _tsOrderAll.slice();
-      }
-      _tsRebuildKeyIndex();
-      const allowed = new Set(_tsOrder);
-      for (const [k, card] of [..._trackStatusMap]) {
-        if (!allowed.has(k)) {
-          card.remove();
-          _trackStatusMap.delete(k);
-        }
-      }
-      _tsUpdateVirtInnerHeight();
-      requestAnimationFrame(() => {
-        _tsVirtMeasureRowH();
-        _tsVirtOnScroll();
-      });
-    } else {
-      _tsOrder = _tsOrderAll.slice();
-      _tsRebuildKeyIndex();
-      if (list && _trackStatusMap.size > 0) {
-        for (let i = 0; i < _tsOrderAll.length; i++) {
-          const k = _tsOrderAll[i];
-          const card = _trackStatusMap.get(k);
-          if (!card) continue;
-          const show =
-            _tsHistoryFilterMode !== "errors" ||
-            _tsKeyIsErrorInCurrentSession(k, stemCtx);
-          card.classList.toggle("hidden", !show);
-          card.setAttribute("aria-hidden", show ? "false" : "true");
-        }
-      }
-    }
-    _tsUpdateErrorHistoryCountBadge(stemCtx);
-  }
-
-  function _initDownloadHistorySegment() {
-    const allBtn = document.getElementById("dl-history-tab-all");
-    const errBtn = document.getElementById("dl-history-tab-errors");
-    const list = document.getElementById("dl-track-status");
-    if (!allBtn || !errBtn) return;
-    const applyMode = (mode) => {
-      _tsHistoryFilterMode = mode;
-      const allOn = mode === "all";
-      allBtn.classList.toggle("is-active", allOn);
-      errBtn.classList.toggle("is-active", !allOn);
-      allBtn.setAttribute("aria-selected", allOn ? "true" : "false");
-      errBtn.setAttribute("aria-selected", allOn ? "false" : "true");
-      allBtn.tabIndex = allOn ? 0 : -1;
-      errBtn.tabIndex = allOn ? -1 : 0;
-      _hist().applyFilter();
-      if (list) list.scrollTop = 0;
-    };
-    allBtn.addEventListener("click", () => applyMode("all"));
-    errBtn.addEventListener("click", () => applyMode("errors"));
   }
 
   function _tsAppendParent(list) {
@@ -608,57 +464,18 @@
   }
 
   function _setTrackCardCover(card, coverUrl) {
-    const url = String(coverUrl || "").trim();
-    if (!url || !card) return;
-    let art = card.querySelector(".track-status-art");
-    if (!art) return;
-    let img = art.querySelector(".track-status-art-img");
-    if (!img) {
-      img = document.createElement("img");
-      img.className = "track-status-art-img";
-      img.alt = "";
-      art.appendChild(img);
-    }
-    art.classList.remove("track-status-art--empty");
-    img.referrerPolicy = "no-referrer";
-    img.decoding = "async";
-    img.loading = "lazy";
-    img.onerror = () => {
-      img.remove();
-      art.classList.add("track-status-art--empty");
-    };
-    img.src = url;
+    if (_historyCardHost) _historyCardHost.setTrackCardCover(card, coverUrl);
   }
 
   function _buildTrackStatusCardEl(trackNo, title, lyricAlbum, coverUrl) {
-    const parsed = _parseTrackRef(trackNo, title);
-    const alb =
-      lyricAlbum != null && String(lyricAlbum).trim() !== ""
-        ? String(lyricAlbum).trim()
-        : "";
-    const key = _trackKey(parsed.trackNo, parsed.title, alb);
-    const card = document.createElement("div");
-    card.className = "track-status-card";
-    card.dataset.trackKey = key;
-    card.dataset.trackNo = _normalizeTrackNo(parsed.trackNo);
-    card.dataset.trackTitle = _normalizeTrackTitle(parsed.title);
-    if (alb) card.dataset.lyricAlbum = alb;
-    card.innerHTML = `
-      <div class="track-status-art track-status-art--empty"></div>
-      <div class="track-status-main">
-        <span class="track-status-title"></span>
-        <div class="track-status-meta-row">
-          <span class="track-status-sub"></span>
-          <span class="track-content-rating" aria-hidden="true"></span>
-        </div>
-      </div>
-      <div class="track-status-tags"></div>
-    `;
-    card.querySelector(".track-status-title").textContent =
-      parsed.title || "Track";
-    card.querySelector(".track-status-sub").textContent = `#${parsed.trackNo || "?"}`;
-    if (coverUrl) _setTrackCardCover(card, coverUrl);
-    return { card, key, parsed, alb };
+    return _historyCardHost
+      ? _historyCardHost.buildTrackStatusCardEl(
+          trackNo,
+          title,
+          lyricAlbum,
+          coverUrl,
+        )
+      : { card: null, key: "", parsed: { trackNo: "", title: "" }, alb: "" };
   }
 
   function _ensureTrackStatusCard(
@@ -668,62 +485,20 @@
     coverUrl,
     lyricAlbum,
   ) {
-    const list = document.getElementById("dl-track-status");
-    if (!list) return null;
-    const parsed = _parseTrackRef(trackNo, title);
-    const alb =
-      lyricAlbum != null && String(lyricAlbum).trim() !== ""
-        ? String(lyricAlbum).trim()
-        : "";
-    const key = _trackKey(parsed.trackNo, parsed.title, alb);
-    if (key && _trackStatusMap.has(key)) {
-      const existing = _trackStatusMap.get(key);
-      if (coverUrl) _setTrackCardCover(existing, coverUrl);
-      if (alb) existing.dataset.lyricAlbum = alb;
-      return existing;
-    }
-    if (!createNew && !key) return null;
-
-    const { card } = _buildTrackStatusCardEl(trackNo, title, lyricAlbum, coverUrl);
-    const stickToBottom = _scrollContainerAtBottom(list);
-    const parent = _tsAppendParent(list);
-    parent.appendChild(card);
-    if (key) {
-      const isNewRow = !_trackStatusMap.has(key);
-      if (isNewRow && !_tsOrderAll.includes(key)) {
-        _tsOrderAll.push(key);
-      }
-      _trackStatusMap.set(key, card);
-      if (!_tsSkipHistoryFilterApply && isNewRow) {
-        _tsApplyHistoryFilter();
-      }
-      if (_tsVirtActive && _tsVirtInnerEl) {
-        const idx = _tsKeyToIndex.get(key);
-        if (idx !== undefined) _tsPositionVirtCard(card, idx);
-        _tsUpdateVirtInnerHeight();
-        requestAnimationFrame(() => {
-          _tsVirtMeasureRowH();
-          _tsVirtOnScroll();
-        });
-      }
-    }
-    if (stickToBottom) list.scrollTop = list.scrollHeight;
-    return card;
+    return _historyCardHost
+      ? _historyCardHost.ensureTrackStatusCard(
+          trackNo,
+          title,
+          createNew,
+          coverUrl,
+          lyricAlbum,
+        )
+      : null;
   }
 
   function _setTrackContentRatingBadge(card, trackExplicitKnown) {
-    if (!card) return;
-    const el = card.querySelector(".track-content-rating");
-    if (!el) return;
-    if (trackExplicitKnown === true) {
-      el.innerHTML = `<span class="track-explicit-badge explicit-tag-badge" data-tip="Marked explicit on Qobuz">${_EXPLICIT_BADGE_SVG}</span>`;
-      el.className = "track-content-rating track-content-rating--explicit";
-    } else if (trackExplicitKnown === false) {
-      el.innerHTML = "";
-      el.className = "track-content-rating";
-    } else {
-      el.innerHTML = "";
-      el.className = "track-content-rating";
+    if (_historyCardHost) {
+      _historyCardHost.setTrackContentRatingBadge(card, trackExplicitKnown);
     }
   }
 
@@ -1311,70 +1086,6 @@
     }
   }
 
-  function _finalizeSubstituteSearchBtn(tags, card) {
-    if (!tags || !card) return;
-    const sid = (card.dataset.slotTrackId || "").trim();
-    const rid = (card.dataset.releaseAlbumId || "").trim();
-    if (!sid || !rid) return;
-    tags.querySelectorAll(".track-missing-placeholder-btn").forEach((n) => n.remove());
-
-    // ── Placeholder button ────────────────────────────────────────────────
-    const mp = document.createElement("button");
-    mp.type = "button";
-    mp.className = "track-dl-btn track-missing-placeholder-btn";
-    mp.setAttribute("data-tip", _MISSING_PLACEHOLDER_BTN_TIP);
-    mp.setAttribute(
-      "aria-label",
-      "Save missing-track placeholder (.missing.txt) beside downloads",
-    );
-    mp.innerHTML = _TRACK_MISSING_NOTE_ICON_SVG;
-    mp.addEventListener("click", (evt) => {
-      evt.preventDefault();
-      evt.stopPropagation();
-      if (mp.disabled) return;
-      if (card.dataset.resolvedBy === "placeholder") return;
-      
-      const prevAudio = (card.dataset.audioPath || "").trim();
-      if (card.dataset.resolvedBy === "search" && prevAudio && !prevAudio.toLowerCase().endsWith(".missing.txt")) {
-        api.replacementApi.deleteResolutionFile({ file_path: prevAudio }).catch(() => {});
-        delete card.dataset.audioPath;
-        delete card.dataset.resolvedBy;
-      }
-
-      // If previously resolved by search, just write the placeholder, no
-      // audio file to delete (the substitute is a real downloaded track the
-      // user may want to keep; only the resolution *label* switches).
-      void _writeAttachMissingPlaceholder(card, mp);
-    });
-    tags.appendChild(mp);
-
-    // ── Search / substitute button ────────────────────────────────────────
-    const sb = document.createElement("button");
-    sb.type = "button";
-    sb.className = "track-dl-btn track-substitute-search-btn";
-    sb.setAttribute("data-tip", "Search to replace track with similar");
-    sb.setAttribute("aria-label", "Find track replacement");
-    sb.innerHTML = _TRACK_SEARCH_ICON_SVG;
-    sb.addEventListener("click", (evt) => {
-      evt.preventDefault();
-      evt.stopPropagation();
-      // If previously resolved by placeholder, delete the .missing.txt first
-      // so the library doesn't end up with both a real file and a placeholder.
-      const prevPath = (card.dataset.missingPlaceholderPath || "").trim();
-      if (card.dataset.resolvedBy === "placeholder" && prevPath) {
-        api.replacementApi.deleteResolutionFile({ file_path: prevPath }).catch(() => { /* fire-and-forget; open search regardless */ });
-        delete card.dataset.missingPlaceholderPath;
-        delete card.dataset.resolvedBy;
-        _syncResolutionButtonStates(card);
-      }
-      _openAttachTrackPopover(card);
-    });
-    tags.appendChild(sb);
-
-    // Restore any previously saved resolution state (survives re-renders).
-    _syncResolutionButtonStates(card);
-  }
-
   function _setTrackDownloadChip(
     trackNo,
     title,
@@ -1383,109 +1094,16 @@
     linkOpts,
     lyricAlbum,
   ) {
-    const card = _ensureTrackStatusCard(trackNo, title, false, undefined, lyricAlbum);
-    if (!card) return;
-    const tags = card.querySelector(".track-status-tags");
-    if (!tags) return;
-    tags.querySelectorAll(".track-substitute-search-btn").forEach((n) => n.remove());
-    tags.querySelectorAll(".track-missing-placeholder-btn").forEach((n) => n.remove());
-    const old = card.querySelector(".download-chip");
-    if (old) old.remove();
-
-    const href = linkOpts && String(linkOpts.href || "").trim();
-    const sid = linkOpts && String(linkOpts.slotTrackId || "").trim();
-    if (href) {
-      if (sid && card) {
-        card.dataset.slotTrackId = sid;
-      }
-      const rid =
-        linkOpts && String(linkOpts.releaseAlbumId || "").trim();
-      if (rid && card) {
-        card.dataset.releaseAlbumId = rid;
-      }
-      const el = document.createElement("a");
-      el.className = "track-dl-btn download-chip purchase-only";
-      el.href = href;
-      el.target = "_blank";
-      el.rel = "noopener noreferrer";
-      if (linkOpts.titleAttr) {
-        const tip = String(linkOpts.titleAttr).trim();
-        el.setAttribute("data-tip", tip);
-        el.setAttribute("aria-label", tip);
-        el.removeAttribute("title");
-      } else {
-        el.setAttribute("aria-label", "Open in Qobuz store");
-      }
-      el.textContent = statusText || "Purchase";
-      tags.appendChild(el);
-      _finalizeSubstituteSearchBtn(tags, card);
-      return;
+    if (_historyCardHost) {
+      _historyCardHost.setTrackDownloadChip(
+        trackNo,
+        title,
+        statusText,
+        cls,
+        linkOpts,
+        lyricAlbum,
+      );
     }
-
-    const el = document.createElement("button");
-    el.type = "button";
-    el.className = "track-dl-btn download-chip";
-    el.disabled = true;
-    el.innerHTML = `<span class="track-dl-btn-fill"></span>${_TRACK_DL_ICON_SVG}`;
-
-    const revealPath = (card.dataset.audioPath || "").trim();
-    const canReveal = cls === "done" && revealPath !== "";
-
-    if (cls === "done") {
-      el.classList.add("track-dl-btn--done");
-      if (canReveal) {
-        el.classList.add("track-dl-btn--reveal");
-        el.disabled = false;
-        el.setAttribute("aria-label", "Show downloaded file in folder");
-        el.setAttribute("data-tip", "Show in folder");
-        el.innerHTML =
-          '<span class="track-dl-btn-fill"></span>' +
-          '<span class="track-dl-btn-ico-stack">' +
-          `<span class="track-dl-btn-ico-layer track-dl-btn-ico--dl">${_TRACK_DL_ICON_SVG}</span>` +
-          `<span class="track-dl-btn-ico-layer track-dl-btn-ico--folder">${_TRACK_FOLDER_ICON_SVG}</span>` +
-          "</span>";
-      } else {
-        el.setAttribute("aria-label", "Downloaded");
-      }
-    } else if (cls === "failed") {
-      el.classList.add("track-dl-btn--failed");
-      el.setAttribute("aria-label", statusText === "failed" ? "Download failed" : String(statusText || "Failed"));
-      el.innerHTML = _TRACK_DL_FAIL_SVG;
-    } else {
-      el.classList.add("track-dl-btn--active");
-      el.setAttribute("aria-label", "Downloading");
-    }
-    tags.appendChild(el);
-    if (cls === "failed") {
-      _finalizeSubstituteSearchBtn(tags, card);
-    } else if (cls === "done" && card.dataset.attachSearchEligible === "1") {
-      _finalizeSubstituteSearchBtn(tags, card);
-    }
-  }
-
-  function _trackStatusCardForProgress(trackNo, title, lyricAlbum) {
-    const parsed = _parseTrackRef(trackNo, title);
-    const pa = lyricAlbum != null && String(lyricAlbum).trim() !== "" ? String(lyricAlbum).trim() : "";
-    let key = _trackKey(parsed.trackNo, parsed.title, pa);
-    let card = key ? _trackStatusMap.get(key) : null;
-    if (!card && pa) {
-      key = _trackKey(parsed.trackNo, parsed.title, "");
-      card = key ? _trackStatusMap.get(key) : null;
-    }
-    if (!card) {
-      const wantN = _normalizeTrackNo(parsed.trackNo);
-      const wantT = _normalizeTrackTitle(parsed.title);
-      for (const c of _trackStatusMap.values()) {
-        const tn = _normalizeTrackNo(c.dataset.trackNo || "");
-        const tEl = c.querySelector(".track-status-title");
-        const tt = _normalizeTrackTitle((tEl && tEl.textContent) || "");
-        if (tn === wantN && tt === wantT) {
-          card = c;
-          break;
-        }
-      }
-    }
-    return card;
   }
 
   function _updateTrackDownloadProgress(
@@ -1495,196 +1113,27 @@
     total,
     lyricAlbum,
   ) {
-    const card = _trackStatusCardForProgress(trackNo, title, lyricAlbum);
-    if (!card) return;
-    const btn = card.querySelector("button.download-chip.track-dl-btn");
-    if (!btn || !btn.classList.contains("track-dl-btn--active")) return;
-    const t = Number(total);
-    const r = Number(received);
-    if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(r)) return;
-    const pct = Math.max(0, Math.min(100, Math.round((r / t) * 100)));
-    const fill = btn.querySelector(".track-dl-btn-fill");
-    if (fill) {
-      const f = pct / 100;
-      fill.style.transform = `scaleY(${f})`;
+    if (_historyCardHost) {
+      _historyCardHost.updateTrackDownloadProgress(
+        trackNo,
+        title,
+        received,
+        total,
+        lyricAlbum,
+      );
     }
-    btn.setAttribute("aria-label", `Downloading, ${pct}%`);
-  }
-
-  /** Interpolate chip colors from red (0%) to accent teal (100%) | pairs with synced tag. */
-  function _confidenceChipStyles(pct) {
-    const p = Math.max(0, Math.min(100, pct)) / 100;
-    const r0 = 255;
-    const g0 = 77;
-    const b0 = 77;
-    const r1 = 110;
-    const g1 = 231;
-    const b1 = 247;
-    const r = Math.round(r0 + (r1 - r0) * p);
-    const g = Math.round(g0 + (g1 - g0) * p);
-    const b = Math.round(b0 + (b1 - b0) * p);
-    return {
-      color: `rgb(${r},${g},${b})`,
-      borderColor: `rgba(${r},${g},${b},0.45)`,
-      background: `rgba(${r},${g},${b},0.12)`,
-    };
-  }
-
-  function _positionConfidenceTooltip(wrap, tip) {
-    if (!wrap || !tip || !tip.classList.contains("confidence-chip-tooltip--open")) return;
-    if (tip.parentNode !== document.body) document.body.appendChild(tip);
-    tip.classList.add("confidence-chip-tooltip--fixed");
-    requestAnimationFrame(() => {
-      const r = wrap.getBoundingClientRect();
-      const tw = tip.offsetWidth;
-      const th = tip.offsetHeight;
-      const pad = 8;
-      let left = r.right - tw;
-      left = Math.max(pad, Math.min(left, window.innerWidth - tw - pad));
-      let top = r.top - th - pad;
-      if (top < pad) top = Math.min(r.bottom + pad, window.innerHeight - th - pad);
-      tip.style.left = `${Math.round(left)}px`;
-      tip.style.top = `${Math.round(Math.max(pad, top))}px`;
-    });
-  }
-
-  function _hideConfidenceTooltip(wrap, tip) {
-    if (!tip) return;
-    tip.classList.remove("confidence-chip-tooltip--open");
-    tip.classList.remove("confidence-chip-tooltip--fixed");
-    tip.style.left = "";
-    tip.style.top = "";
-    if (tip.parentNode === document.body && wrap) wrap.appendChild(tip);
-  }
-
-  function _bindConfidenceTooltipUi(wrap, tip) {
-    const listEl = document.getElementById("dl-track-status");
-
-    function targetInside(container, target) {
-      if (!container || !target || !(target instanceof Node)) return false;
-      return container === target || container.contains(target);
-    }
-
-    function hideUnlessMovingToTip(e) {
-      const next = e.relatedTarget;
-      if (targetInside(tip, next) || targetInside(wrap, next)) return;
-      _hideConfidenceTooltip(wrap, tip);
-    }
-
-    function showTip() {
-      tip.classList.add("confidence-chip-tooltip--open");
-      _positionConfidenceTooltip(wrap, tip);
-    }
-
-    function onScrollOrResize() {
-      if (tip.classList.contains("confidence-chip-tooltip--open")) {
-        _positionConfidenceTooltip(wrap, tip);
-      }
-    }
-
-    const onMouseEnterWrap = () => showTip();
-    const onMouseEnterTip = () => showTip();
-    const onMouseLeaveWrap = (e) => hideUnlessMovingToTip(e);
-    const onMouseLeaveTip = (e) => hideUnlessMovingToTip(e);
-    const onFocusInWrap = () => showTip();
-    const onFocusOutWrap = (e) => hideUnlessMovingToTip(e);
-
-    wrap.addEventListener("mouseenter", onMouseEnterWrap);
-    wrap.addEventListener("mouseleave", onMouseLeaveWrap);
-    tip.addEventListener("mouseenter", onMouseEnterTip);
-    tip.addEventListener("mouseleave", onMouseLeaveTip);
-    wrap.addEventListener("focusin", onFocusInWrap);
-    wrap.addEventListener("focusout", onFocusOutWrap);
-    window.addEventListener("resize", onScrollOrResize);
-    if (listEl) listEl.addEventListener("scroll", onScrollOrResize, { passive: true });
-    window.addEventListener("scroll", onScrollOrResize, true);
-
-    wrap._confidenceTooltipTeardown = () => {
-      _hideConfidenceTooltip(wrap, tip);
-      wrap.removeEventListener("mouseenter", onMouseEnterWrap);
-      wrap.removeEventListener("mouseleave", onMouseLeaveWrap);
-      tip.removeEventListener("mouseenter", onMouseEnterTip);
-      tip.removeEventListener("mouseleave", onMouseLeaveTip);
-      wrap.removeEventListener("focusin", onFocusInWrap);
-      wrap.removeEventListener("focusout", onFocusOutWrap);
-      window.removeEventListener("resize", onScrollOrResize);
-      if (listEl) listEl.removeEventListener("scroll", onScrollOrResize);
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      delete wrap._confidenceTooltipTeardown;
-    };
-  }
-
-  function _setLyricConfidenceChip(tags, pct) {
-    let wrap = tags.querySelector(".confidence-chip-wrap");
-    const chipHtml = `
-      <span class="track-status-chip confidence-chip"></span>
-      <div class="confidence-chip-tooltip" role="tooltip">
-        <div class="confidence-chip-tooltip-title">Lyric match confidence</div>
-        <div class="confidence-chip-tooltip-desc">How well the LRCLIB result matches this track’s artist, title, length, and album. Higher means we’re more sure it’s the right song.</div>
-      </div>
-    `;
-    if (wrap) {
-      if (typeof wrap._confidenceTooltipTeardown === "function") {
-        wrap._confidenceTooltipTeardown();
-      }
-      wrap.remove();
-    }
-    wrap = document.createElement("span");
-    wrap.className = "confidence-chip-wrap";
-    wrap.setAttribute("tabindex", "0");
-    wrap.innerHTML = chipHtml;
-    const chip = wrap.querySelector(".confidence-chip");
-    const tip = wrap.querySelector(".confidence-chip-tooltip");
-    const styles = _confidenceChipStyles(pct);
-    chip.textContent = `${pct}%`;
-    chip.style.color = styles.color;
-    chip.style.borderColor = styles.borderColor;
-    chip.style.background = styles.background;
-    wrap.setAttribute(
-      "aria-label",
-      `Lyric match confidence ${pct} percent. Hover for details.`,
-    );
-    const lyricsChip = tags.querySelector(".track-status-chip.lyrics-chip");
-    const download = tags.querySelector(".download-chip");
-    if (lyricsChip) tags.insertBefore(wrap, lyricsChip);
-    else if (download) tags.insertBefore(wrap, download);
-    else tags.appendChild(wrap);
-
-    _bindConfidenceTooltipUi(wrap, tip);
-  }
-
-  function _removeLyricConfidenceChip(tags) {
-    const wrap = tags.querySelector(".confidence-chip-wrap");
-    if (!wrap) return;
-    if (typeof wrap._confidenceTooltipTeardown === "function") {
-      wrap._confidenceTooltipTeardown();
-    }
-    wrap.remove();
   }
 
   function _normalizeLyricDestination(destination) {
-    const d = String(destination || "").trim().toLowerCase();
-    if (d === "both" || d === "lrc" || d === ".lrc" || d === "embed" || d === "metadata") {
-      return d === ".lrc" ? "lrc" : d === "metadata" ? "embed" : d;
-    }
-    return "";
+    return _historyCardHost
+      ? _historyCardHost.normalizeLyricDestination(destination)
+      : "";
   }
 
   function _lyricDestinationFromOutputs(outputs) {
-    const lrc = !!(outputs && outputs.lrc);
-    const metadata = !!(outputs && outputs.metadata);
-    if (lrc && metadata) return "both";
-    if (lrc) return "lrc";
-    if (metadata) return "embed";
-    return "";
-  }
-
-  function _lyricDestinationLabel(destination) {
-    const d = _normalizeLyricDestination(destination);
-    if (d === "both") return "both";
-    if (d === "lrc") return ".lrc";
-    if (d === "embed") return "embed";
-    return "";
+    return _historyCardHost
+      ? _historyCardHost.lyricDestinationFromOutputs(outputs)
+      : "";
   }
 
   function _setTrackLyricsChip(
@@ -1696,83 +1145,16 @@
     lyricProvider,
     lyricDestination,
   ) {
-    const card = _ensureTrackStatusCard(
-      trackNo,
-      title,
-      false,
-      undefined,
-      lyricAlbum,
-    );
-    if (!card) return;
-    const tags = card.querySelector(".track-status-tags");
-    let chip = card.querySelector(".track-status-chip.lyrics-chip");
-    if (!chip) {
-      chip = document.createElement("span");
-      chip.className = "track-status-chip lyrics-chip";
-      tags.appendChild(chip);
-    }
-    const lt = String(lyricType || "none").toLowerCase();
-    chip.className = `track-status-chip lyrics-chip ${lt}`;
-    const confRaw =
-      confidence != null && String(confidence).trim() !== ""
-        ? String(confidence).trim()
-        : "";
-    const confNum = confRaw !== "" ? parseInt(confRaw, 10) : NaN;
-    const hasConf =
-      !Number.isNaN(confNum) && confRaw !== "" && lt !== "loading";
-    const dest = _normalizeLyricDestination(lyricDestination);
-    const destLabel =
-      lt === "loading" || lt === "none" || lt === "error"
-        ? ""
-        : _lyricDestinationLabel(dest);
-
-    chip.textContent =
-      lt === "none"
-        ? "none"
-        : lt === "error"
-          ? "error"
-          : lt === "loading"
-            ? "loading"
-            : lt;
-    if (dest) {
-      chip.dataset.lyricDestination = dest;
-    } else {
-      delete chip.dataset.lyricDestination;
-    }
-    chip.removeAttribute("title");
-    const outputDesc =
-      dest === "both"
-        ? ".lrc + Embedded"
-        : dest === "lrc"
-          ? ".lrc"
-          : dest === "embed"
-            ? "Embedded"
-            : "";
-    if (outputDesc && lt !== "loading" && lt !== "none" && lt !== "error") {
-      chip.setAttribute("aria-label", `${lt} lyrics, ${outputDesc}`);
-      chip.setAttribute("data-tip", outputDesc);
-    } else {
-      chip.removeAttribute("aria-label");
-      chip.removeAttribute("data-tip");
-    }
-
-    if (lt === "loading" || !hasConf) {
-      _removeLyricConfidenceChip(tags);
-    } else {
-      _setLyricConfidenceChip(tags, confNum);
-    }
-
-    const apHist = (card.dataset.audioPath || "").trim();
-    if (apHist && lt !== "loading") {
-      void api.historyApi
-        .postLyrics({
-          audio_path: apHist,
-          lyric_type: lt,
-          lyric_provider: lyricProvider != null ? String(lyricProvider) : "",
-          lyric_confidence: confRaw,
-          lyric_destination: dest,
-        })
-        .catch(() => {});
+    if (_historyCardHost) {
+      _historyCardHost.setTrackLyricsChip(
+        trackNo,
+        title,
+        lyricType,
+        confidence,
+        lyricAlbum,
+        lyricProvider,
+        lyricDestination,
+      );
     }
   }
 
@@ -3192,7 +2574,7 @@
       const res = await api.historyApi.list();
       const data = await res.json();
       if (!data.ok || !Array.isArray(data.items)) return;
-      const items = data.items;
+      const items = _tsSortHistoryItemsForDisplay(data.items);
       const stick = _scrollContainerAtBottom(list);
 
       _tsSkipHistoryFilterApply = true;
@@ -3609,6 +2991,56 @@
       guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
       syncSearchQueuedHighlights: _syncSearchQueuedHighlights,
     });
+    if (
+      QG.features.history &&
+      QG.features.history.internals &&
+      typeof QG.features.history.internals.bootstrapFilters === "function"
+    ) {
+      _historyFilterHost = QG.features.history.internals.bootstrapFilters({
+        guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
+        getActiveDlKeys: () => _tsActiveDlKeys,
+        getCardMap: () => _trackStatusMap,
+        getDbItemByKey: () => _tsDbItemByKey,
+        getOrderAll: () => _tsOrderAll,
+        getOrder: () => _tsOrder,
+        setOrder: (order) => {
+          _tsOrder = order;
+        },
+        getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
+        isVirtActive: () => _tsVirtActive,
+        getVirtInnerEl: () => _tsVirtInnerEl,
+        rebuildKeyIndex: _tsRebuildKeyIndex,
+        updateVirtInnerHeight: _tsUpdateVirtInnerHeight,
+        virtMeasureRowH: _tsVirtMeasureRowH,
+        virtOnScroll: _tsVirtOnScroll,
+      });
+    }
+    if (
+      QG.features.history &&
+      QG.features.history.internals &&
+      typeof QG.features.history.internals.bootstrapCardRendering === "function"
+    ) {
+      _historyCardHost = QG.features.history.internals.bootstrapCardRendering({
+        getCardMap: () => _trackStatusMap,
+        appendTsOrderKey: (key) => {
+          if (!_tsOrderAll.includes(key)) _tsOrderAll.push(key);
+        },
+        getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
+        applyHistoryFilter: _tsApplyHistoryFilter,
+        isVirtActive: () => _tsVirtActive,
+        getVirtInnerEl: () => _tsVirtInnerEl,
+        getKeyToIndex: () => _tsKeyToIndex,
+        appendParent: _tsAppendParent,
+        positionVirtCard: _tsPositionVirtCard,
+        updateVirtInnerHeight: _tsUpdateVirtInnerHeight,
+        virtMeasureRowH: _tsVirtMeasureRowH,
+        virtOnScroll: _tsVirtOnScroll,
+        scrollContainerAtBottom: _scrollContainerAtBottom,
+        writeAttachMissingPlaceholder: _writeAttachMissingPlaceholder,
+        openAttachTrackPopover: _openAttachTrackPopover,
+        syncResolutionButtonStates: _syncResolutionButtonStates,
+      });
+    }
     _queueHost.initUrlQueue();
     initCoverArtMutex("dl");
 

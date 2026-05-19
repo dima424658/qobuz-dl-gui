@@ -507,6 +507,46 @@ Commit: pending
 - **`countDownloadedForRelease`** still transitional via queue host (unchanged; **H6**).
 - Next: **H3** track status card rendering extraction.
 
+## Checkpoint H3 - Track status card rendering (`historyCardRendering.js`)
+
+Date: 2026-05-18  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/historyCardRendering.js`: **`bootstrapCardRendering(deps)`** owns card shell DOM, cover art, download chip, lyrics chip + confidence tooltip, substitute-search tag buttons, and lyric-destination helpers.
+- **`app.js`:** removed ~680 lines of inline card/chip rendering; **`initDownload()`** calls card bootstrap after queue bootstrap (virt scroller + filter + attach-track callbacks injected via **`deps`**). Thin **`_ensureTrackStatusCard` / `_setTrack*Chip` / `_normalizeLyricDestination`** delegates remain for hydrate/SSE/persist paths and **`history.install`** wiring.
+- **`index.html`:** `historyCardRendering.js` after `historyController.js`; **`app.js?v=82`**.
+
+### Validation
+
+- `node --check` on `historyCardRendering.js` and `app.js`; `python -m unittest discover -s tests` passed.
+
+### Notes
+
+- Attach-track popover/search UI stays in **`app.js`** (lyrics/replacement milestone); card module only receives **`writeAttachMissingPlaceholder`**, **`openAttachTrackPopover`**, **`syncResolutionButtonStates`** via deps.
+- Next: **H4** history filters / Errors tab extraction.
+
+## Checkpoint H4 - History filters / Errors tab (`historyFilters.js`)
+
+Date: 2026-05-18  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/historyFilters.js`: **`bootstrapFilters(deps)`** owns All/Errors tab wiring, error stem classification (unsettled parallel downloads / lyric loading), virt + non-virt filter apply, and error count badge.
+- **`app.js`:** removed inline filter/error helpers (~175 lines); **`initDownload()`** bootstraps filters before card bootstrap; thin **`_tsApplyHistoryFilter` / `_initDownloadHistorySegment`** delegates remain for **`history.install`** and hydrate/SSE paths.
+- **`index.html`:** `historyFilters.js` after `historyController.js`; **`app.js?v=84`**.
+
+### Validation
+
+- `node --check` on `historyFilters.js` and `app.js`; `python -m unittest discover -s tests` passed.
+
+### Notes
+
+- Filter tab clicks call module-local **`applyFilter`** directly (avoids façade loop during init).
+- Next: **H5** virtualization extraction.
+
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
