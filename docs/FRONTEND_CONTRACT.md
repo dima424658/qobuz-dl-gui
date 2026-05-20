@@ -36,21 +36,26 @@ Do not break these during extraction unless a failing test or broken route force
   23. `/gui/js/features/history/historyHydratePersist.js` — **`bootstrapHydratePersist(deps)`** (DB hydrate, row store, persist, release download count)
   24. `/gui/js/features/history/historyFilters.js` — **`bootstrapFilters(deps)`** (All/Errors tab, error classification, badge)
   25. `/gui/js/features/history/historyCardRendering.js` — **`bootstrapCardRendering(deps)`** (track-status card DOM, download/lyrics chips)
-  26. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
-  27. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
-  28. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
-  29. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **virt/hydrate/filter/card bootstraps** + **`features.history.install`**
+  26. `/gui/js/features/replacements/replacementController.js` — **`QobuzGui.features.replacements`** (`install`, attach popover / placeholder / resolution façade); no-op until `app.js` **`install`**
+  27. `/gui/js/features/replacements/attachTrackPopover.js` — **`bootstrapAttachTrackPopover(deps)`** (attach-track popover DOM + API search/submit)
+  28. `/gui/js/features/replacements/resolutionButtons.js` — **`bootstrapResolutionButtons(deps)`** (resolution button chrome on history rows)
+  29. `/gui/js/features/replacements/missingPlaceholder.js` — **`bootstrapMissingPlaceholder(deps)`** (`.missing.txt` placeholder writes)
+  30. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
+  31. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
+  32. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
+  33. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **virt/filter/replacement*/card/hydrate** + **`features.history.install`** + **`features.replacements.install`**
 
 - **Optional later cleanup (non-goal until someone does it deliberately):** a more uniform mental order might be API → core → API extensions → shared UI → features → app. Today's order mixes `features`/`ui`/core somewhat for historical incremental extraction; reordering requires re-validating every cross-file assumption.
 
 ### Search vs queue lifecycle
 
-`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`historyController.js`** defines the **`features.history`** façade (stable methods + **`install(impl)`**); **`historyVirtualization.js`**, **`historyHydratePersist.js`**, **`historyFilters.js`**, and **`historyCardRendering.js`** implement virt scroller, DB row store/hydrate/persist, filter tabs, and card/chip DOM via **`bootstrap*`** helpers. **`app.js`** passes real implementations from in-scope helpers after `_queueHost` exists. **`initDownload()`** calls queue **`bootstrap(...)`**, then history **virt → filter → card → hydrate bootstraps**, then **guarded** **`features.history.install`**, then **`features.queue.install`**, then search **`init()`** from main **`init()`**.
+`/gui/js/features/queue/queueController.js` defines the stable façade; **`queueInternals.js`** implements URL list state, textarea/card mode, server persist/restore, queue cards + resolve worker, drag handlers. **`historyController.js`** defines the **`features.history`** façade (stable methods + **`install(impl)`**); **`historyVirtualization.js`**, **`historyHydratePersist.js`**, **`historyFilters.js`**, and **`historyCardRendering.js`** implement virt scroller, DB row store/hydrate/persist, filter tabs, and card/chip DOM via **`bootstrap*`** helpers. **`replacementController.js`** defines **`features.replacements`**; **`attachTrackPopover.js`**, **`resolutionButtons.js`**, and **`missingPlaceholder.js`** bootstrap before history card rendering so **`historyCardRendering`** receives replacement callbacks. **`app.js`** passes real implementations from in-scope helpers after `_queueHost` exists. **`initDownload()`** calls queue **`bootstrap(...)`**, then history **virt → filter → replacement* → card → hydrate bootstraps**, then **guarded** **`features.history.install`** and **`features.replacements.install`**, then **`features.queue.install`**, then search **`init()`** from main **`init()`**.
 
 ## Namespace rule
 
 - Prefer `window.QobuzGui = window.QobuzGui || {}` and attach subtrees, e.g. `QobuzGui.core.trackIdentity`, `QobuzGui.ui.globalTooltip`, `QobuzGui.features.queue`.
 - **Implemented (from extra scripts + `app.js`):**
+  - `QobuzGui.api` groups on `client.js` + `extensions.js`; **`replacementApi`** (attach search/download, missing placeholder write, resolution file delete) is consumed only by **`features/replacements/*`** internals — no standalone `replacementApi.js` file.
   - `QobuzGui.features.updateBanner` (`js/features/settings/updateBanner.js`)
   - `QobuzGui.features.settings.settingsForm` (`js/features/settings/settingsForm.js`)
   - `QobuzGui.features.settings.downloadOptionsAutosave` (`js/features/settings/downloadOptionsAutosave.js`)
@@ -62,6 +67,10 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.history.internals.bootstrapVirtualization` (`js/features/history/historyVirtualization.js`) — **`deps`:** order/key/card/db maps, active download keys, **`mountDbItemAtIndex(it, index)`** callback; returns virt scroller API (`isVirtActive`, `appendParent`, `teardownVirtScroller`, `activateForList`, `runInitialRenderPass`, etc.); invoked once from **`initDownload()`** before filter/card bootstraps
   - `QobuzGui.features.history.internals.bootstrapCardRendering` (`js/features/history/historyCardRendering.js`) — **`deps`:** card map, virt scroller hooks, filter apply, attach-track substitute callbacks; returns `ensureTrackStatusCard`, `setTrackDownloadChip`, `setTrackLyricsChip`, etc.; **`app.js`** keeps thin `_`-prefixed delegates wired into **`history.install`**
   - `QobuzGui.features.history.internals.bootstrapFilters` (`js/features/history/historyFilters.js`) — **`deps`:** card/db maps, order arrays, virt hooks, pending-audio prefix; returns `applyFilter`, `updateErrorHistoryCountBadge`, `initDownloadHistorySegment`; tab UI calls local `applyFilter` (not façade loop)
+  - `QobuzGui.features.replacements` (`replacementController.js`) — **`install(impl)`** from **`initDownload()`** (guarded). Public: `openAttachPopover`, `closeAttachPopover`, `writeMissingPlaceholder`, `syncResolutionButtonStates`. Safe defaults until **`install`** runs.
+  - `QobuzGui.features.replacements.internals.bootstrapAttachTrackPopover` (`js/features/replacements/attachTrackPopover.js`) — returns `open`, `close`, `init`, **`getAnchorCard`**, **`getStatusElementForCard`**; lyric positioning helpers injected from **`app.js`** until lyrics L1–L2.
+  - `QobuzGui.features.replacements.internals.bootstrapResolutionButtons` (`js/features/replacements/resolutionButtons.js`)
+  - `QobuzGui.features.replacements.internals.bootstrapMissingPlaceholder` (`js/features/replacements/missingPlaceholder.js`) — **`deps`:** **`getAttachAnchorCard`**, **`getAttachStatusElementForCard`** from attach host only (no hidden anchor state).
   - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.
   - **`QobuzGui.features.feedback.issueReport`** (`js/features/feedback/issueReportSubsystem.js`): `init(checkStatus)` — settings gear popover, issue-report / sent-history UX, worker submit endpoint, logs modal (**invoked from `app.js`** `initSettings()` so `checkStatus` stays in-scope).
   - **`QobuzGui.features.lyrics.lyricOutputSettings`** (`js/features/lyrics/lyricOutputSettings.js`): download ↔ settings lyric toggles sync and `/api/config` persist.

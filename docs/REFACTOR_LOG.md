@@ -586,10 +586,34 @@ Commit: pending
 
 - Queue internals still scan history rows via **`getTrackStatusMap`** dep (same map reference); only the public façade count moved off **`_queueHost.countHistoryDownloadedForRelease`**.
 
+### H6 smoke (manual)
+
+Run after history / download changes:
+
+- History hydrate after restart
+- All / Errors tabs; scroll-to-bottom on tab switch (newest at bottom)
+- Error badge count accuracy
+- Large-history virtualization (threshold 72+): scroll, pins, Errors tab
+- Active download row stays pinned while scrolling
+- Purchase-only row persists in history
+- Replacement / missing-placeholder controls visible on eligible rows
+- Lyrics chip updates after `track_lyrics` SSE
+- Clear history confirm
+- Album queue remaining count after hydrate
+
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
 These items are **intentionally not done** yet; captured so we do not mistake interim layout for finished structure.
+
+### Roadmap state (2026)
+
+```text
+Done: queue internals (`queueInternals.js`), history H1–H6 (...), replacements R1–R3 (`features/replacements/`)
+Next: lyrics L1–L2 (preview player, search modal) — absorbs popover/anchor helpers injected into attach-track popover
+Defer: download runtime / SSE façade (D1)
+Optional later: feedback subsystem split, script-order cleanup
+```
 
 ### `issueReportSubsystem.js` (~880 lines)
 
@@ -607,8 +631,26 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-### Suggested sequencing for the next splits
+**Frontend migration (~70%+):** History H1–H6 and **replacements R1–R3** are landed; **`app.js`** remains a compatibility shell for download/SSE, lyrics modal, setup/auth, and settings. Next controlled step: **lyrics** L1–L2; avoid D1/SSE until then.
 
-- **Queue internals landed** (`queueInternals.js`); optional further peels: download-only helpers co-located in `initDownload`, or thinning `bootstrap` deps.
-- **Defer**: **download / SSE**.
-- **History / track-status virtualization**: higher coupling and risk—schedule deliberately unless a regression forces sooner.
+## Checkpoint R1–R3 — Replacements (`features/replacements/`)
+
+Date: 2026-05-18  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/replacements/replacementController.js`: **`QobuzGui.features.replacements`** with **`install(impl)`** plus forwards (`openAttachPopover`, `closeAttachPopover`, `writeMissingPlaceholder`, `syncResolutionButtonStates`).
+- Added `attachTrackPopover.js`, `resolutionButtons.js`, `missingPlaceholder.js` with **`internals.bootstrap*`**; **`app.js` `initDownload()`** bootstraps attach → resolution → missing-placeholder **before** `bootstrapCardRendering`; **`features.replacements.install`** after **`features.history.install`**.
+- Replacement HTTP calls use existing **`QobuzGui.api.replacementApi`** in `extensions.js` (no new API file). Missing-placeholder host uses **`getAttachAnchorCard` / `getAttachStatusElementForCard`** from attach host only.
+- **`index.html`:** four replacement scripts after `historyCardRendering.js`; **`app.js?v=87`**.
+
+### Validation
+
+- `node --check` on replacement scripts and `app.js`; `python -m unittest discover -s tests`.
+
+### Notes
+
+- Lyric-modal positioning / anchor helpers remain in **`app.js`** and are injected into **`bootstrapAttachTrackPopover`** until lyrics L1–L2.
+
+
