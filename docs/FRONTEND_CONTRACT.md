@@ -26,26 +26,31 @@ Do not break these during extraction unless a failing test or broken route force
   13. `/gui/js/ui/donationPopover.js`
   14. `/gui/js/ui/collapses.js`
   15. `/gui/js/ui/resetButtons.js`
-  16. `/gui/js/features/lyrics/lyricOutputSettings.js` — `QobuzGui.features.lyrics.lyricOutputSettings` (several downstream scripts assume this exists)
-  17. `/gui/js/features/lyrics/lrcPreviewParser.js` — **`QobuzGui.features.lyrics.internals.parseLrcLinesForPreview`** (pure LRC rows; wired for preview player script only)
-  18. `/gui/js/features/lyrics/lyricPreviewPlayer.js` — **`QobuzGui.features.lyrics.preview`** (`init`, `close`, `teardown`, `parseLrcLines`, `renderSynced`, `renderPlain`, `previewAudioUrl`)
-  19. `/gui/js/features/settings/settingsForm.js` — `QobuzGui.features.settings.settingsForm` (`loadIntoForm`, `mirrorConfigOntoForms`)
-  20. `/gui/js/features/settings/downloadOptionsAutosave.js` — `QobuzGui.features.settings.downloadOptionsAutosave.bind()`
-  21. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
-  22. `/gui/js/features/queue/queueInternals.js` — **`QobuzGui.features.queue.internals.bootstrap(deps)`** returns queue host (`urlQueue`, persist/restore, cards, `_handleDrop*`)
-  23. `/gui/js/features/history/historyController.js` — **`QobuzGui.features.history`** (`install`, `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`); no-op until `app.js` **`install`**
-  24. `/gui/js/features/history/historyVirtualization.js` — **`bootstrapVirtualization(deps)`** (windowed DOM for large history lists)
-  25. `/gui/js/features/history/historyHydratePersist.js` — **`bootstrapHydratePersist(deps)`** (DB hydrate, row store, persist, release download count)
-  26. `/gui/js/features/history/historyFilters.js` — **`bootstrapFilters(deps)`** (All/Errors tab, error classification, badge)
-  27. `/gui/js/features/history/historyCardRendering.js` — **`bootstrapCardRendering(deps)`** (track-status card DOM, download/lyrics chips)
-  28. `/gui/js/features/replacements/replacementController.js` — **`QobuzGui.features.replacements`** (`install`, attach popover / placeholder / resolution façade); no-op until `app.js` **`install`**
-  29. `/gui/js/features/replacements/attachTrackPopover.js` — **`bootstrapAttachTrackPopover(deps)`** (attach-track popover DOM + API search/submit)
-  30. `/gui/js/features/replacements/resolutionButtons.js` — **`bootstrapResolutionButtons(deps)`** (resolution button chrome on history rows)
-  31. `/gui/js/features/replacements/missingPlaceholder.js` — **`bootstrapMissingPlaceholder(deps)`** (`.missing.txt` placeholder writes)
-  32. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
-  33. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
-  34. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
-  35. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **virt/filter/replacement*/card/hydrate** + **`features.history.install`** + **`features.replacements.install`**
+  16. `/gui/js/ui/popoverPositioning.js` — **`QobuzGui.ui.popoverPositioning.positionAboveDownloadHistory`** (lyric search + attach-track popovers)
+  17. `/gui/js/features/lyrics/lyricOutputSettings.js` — `QobuzGui.features.lyrics.lyricOutputSettings` (several downstream scripts assume this exists)
+  18. `/gui/js/features/lyrics/lrcPreviewParser.js` — **`QobuzGui.features.lyrics.internals.parseLrcLinesForPreview`** (pure LRC rows; wired for preview player script only)
+  19. `/gui/js/features/lyrics/lyricPreviewPlayer.js` — **`QobuzGui.features.lyrics.preview`** (`init`, `close`, `teardown`, `parseLrcLines`, `renderSynced`, `renderPlain`, `previewAudioUrl`)
+  20. `/gui/js/features/lyrics/lyricSearchController.js` — **`QobuzGui.features.lyrics.search`** (`install`, `init`, `openForCard`, `close`, `closePreview`); no-op until **`lyricSearchModal.js`** **`install`**
+  21. `/gui/js/features/lyrics/lyricSearchResults.js` — **`features.lyrics.searchResults`** (ctx + callbacks renderer; no modal globals)
+  22. `/gui/js/features/lyrics/lyricAttach.js` — **`features.lyrics.attach`** (preview-row fetch + attach to file)
+  23. `/gui/js/features/lyrics/lyricSearchModal.js` — modal lifecycle; calls **`search.install(realModalHost)`** at load time
+  24. `/gui/js/features/settings/settingsForm.js` — `QobuzGui.features.settings.settingsForm` (`loadIntoForm`, `mirrorConfigOntoForms`)
+  25. `/gui/js/features/settings/downloadOptionsAutosave.js` — `QobuzGui.features.settings.downloadOptionsAutosave.bind()`
+  26. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
+  27. `/gui/js/features/queue/queueInternals.js` — **`QobuzGui.features.queue.internals.bootstrap(deps)`** returns queue host (`urlQueue`, persist/restore, cards, `_handleDrop*`)
+  28. `/gui/js/features/history/historyController.js` — **`QobuzGui.features.history`** (`install`, `countDownloadedForRelease`, `applyFilter`, `ensureTrackCard`, `setDownloadChip`, `setLyricsChip`); no-op until `app.js` **`install`**
+  29. `/gui/js/features/history/historyVirtualization.js` — **`bootstrapVirtualization(deps)`** (windowed DOM for large history lists)
+  30. `/gui/js/features/history/historyHydratePersist.js` — **`bootstrapHydratePersist(deps)`** (DB hydrate, row store, persist, release download count)
+  31. `/gui/js/features/history/historyFilters.js` — **`bootstrapFilters(deps)`** (All/Errors tab, error classification, badge)
+  32. `/gui/js/features/history/historyCardRendering.js` — **`bootstrapCardRendering(deps)`** (track-status card DOM, download/lyrics chips)
+  33. `/gui/js/features/replacements/replacementController.js` — **`QobuzGui.features.replacements`** (`install`, attach popover / placeholder / resolution façade); no-op until `app.js` **`install`**
+  34. `/gui/js/features/replacements/attachTrackPopover.js` — **`bootstrapAttachTrackPopover(deps)`** (attach-track popover DOM + API search/submit)
+  35. `/gui/js/features/replacements/resolutionButtons.js` — **`bootstrapResolutionButtons(deps)`** (resolution button chrome on history rows)
+  36. `/gui/js/features/replacements/missingPlaceholder.js` — **`bootstrapMissingPlaceholder(deps)`** (`.missing.txt` placeholder writes)
+  37. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
+  38. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
+  39. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)`
+  40. `/gui/app.js` — **`initDownload()`**: queue **`bootstrap`** + history **virt/filter/replacement*/card/hydrate** + **`features.history.install`** + **`features.replacements.install`** + **`features.lyrics.search.init`**
 
 - **Optional later cleanup (non-goal until someone does it deliberately):** a more uniform mental order might be API → core → API extensions → shared UI → features → app. Today's order mixes `features`/`ui`/core somewhat for historical incremental extraction; reordering requires re-validating every cross-file assumption.
 
@@ -70,14 +75,18 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.history.internals.bootstrapCardRendering` (`js/features/history/historyCardRendering.js`) — **`deps`:** card map, virt scroller hooks, filter apply, attach-track substitute callbacks; returns `ensureTrackStatusCard`, `setTrackDownloadChip`, `setTrackLyricsChip`, etc.; **`app.js`** keeps thin `_`-prefixed delegates wired into **`history.install`**
   - `QobuzGui.features.history.internals.bootstrapFilters` (`js/features/history/historyFilters.js`) — **`deps`:** card/db maps, order arrays, virt hooks, pending-audio prefix; returns `applyFilter`, `updateErrorHistoryCountBadge`, `initDownloadHistorySegment`; tab UI calls local `applyFilter` (not façade loop)
   - `QobuzGui.features.replacements` (`replacementController.js`) — **`install(impl)`** from **`initDownload()`** (guarded). Public: `openAttachPopover`, `closeAttachPopover`, `writeMissingPlaceholder`, `syncResolutionButtonStates`. Safe defaults until **`install`** runs.
-  - `QobuzGui.features.replacements.internals.bootstrapAttachTrackPopover` (`js/features/replacements/attachTrackPopover.js`) — returns `open`, `close`, `init`, **`getAnchorCard`**, **`getStatusElementForCard`**; lyric positioning helpers injected from **`app.js`** until lyrics L1–L2.
+  - `QobuzGui.features.replacements.internals.bootstrapAttachTrackPopover` (`js/features/replacements/attachTrackPopover.js`) — returns `open`, `close`, `init`, **`getAnchorCard`**, **`getStatusElementForCard`**; lyric anchor/loading helpers from **`features.lyrics.internals`**; positioning from **`ui.popoverPositioning`**; **`search.close`** for mutual dismiss.
   - `QobuzGui.features.replacements.internals.bootstrapResolutionButtons` (`js/features/replacements/resolutionButtons.js`)
   - `QobuzGui.features.replacements.internals.bootstrapMissingPlaceholder` (`js/features/replacements/missingPlaceholder.js`) — **`deps`:** **`getAttachAnchorCard`**, **`getAttachStatusElementForCard`** from attach host only (no hidden anchor state).
   - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.
   - **`QobuzGui.features.feedback.issueReport`** (`js/features/feedback/issueReportSubsystem.js`): `init(checkStatus)` — settings gear popover, issue-report / sent-history UX, worker submit endpoint, logs modal (**invoked from `app.js`** `initSettings()` so `checkStatus` stays in-scope).
   - **`QobuzGui.features.lyrics.lyricOutputSettings`** (`js/features/lyrics/lyricOutputSettings.js`): download ↔ settings lyric toggles sync and `/api/config` persist.
-  - **`QobuzGui.features.lyrics.preview`** (`js/features/lyrics/lyricPreviewPlayer.js`): lyric search **`#lyric-search-preview-*`** playback and body render. Public: **`init(deps)`** (optional **`onOverlayClosed`** in **`deps`**), **`close()`**, **`teardown()`**, **`parseLrcLines`**, **`renderSynced`**, **`renderPlain`**, **`previewAudioUrl`**. **`teardown()`** resets audio/seek UI and internal highlight state only; **`close()`** runs **`teardown()`**, hides **`#lyric-search-preview-panel`**, then invokes **`deps.onOverlayClosed`** (**`app.js`** clears **`previewingLrclibId`** / result-row **Preview** buttons).
-  - **`QobuzGui.features.lyrics.internals.parseLrcLinesForPreview`** (`js/features/lyrics/lrcPreviewParser.js`): pure LRC line parse for preview; **`app.js`** and modal code should call **`preview.parseLrcLines`** only.
+  - **`QobuzGui.features.lyrics.preview`** (`js/features/lyrics/lyricPreviewPlayer.js`): lyric search **`#lyric-search-preview-*`** playback and body render. Public: **`init(deps)`** (optional **`onOverlayClosed`** in **`deps`**), **`close()`**, **`teardown()`**, **`parseLrcLines`**, **`renderSynced`**, **`renderPlain`**, **`previewAudioUrl`**. **`teardown()`** resets audio/seek UI and internal highlight state only; **`close()`** runs **`teardown()`**, hides **`#lyric-search-preview-panel`**, then invokes **`deps.onOverlayClosed`** (modal clears **`previewingLrclibId`** / result-row **Preview** buttons).
+  - **`QobuzGui.features.lyrics.search`** (`lyricSearchController.js` + **`lyricSearchModal.js`**): **`install(impl)`**, **`init(deps)`**, **`openForCard(card)`**, **`close()`**, **`closePreview()`**. Modal owns ctx/session/abort guards; results renderer uses ctx + callbacks only.
+  - **`QobuzGui.features.lyrics.searchResults`** (`lyricSearchResults.js`): **`configure`**, **`showLoading`**, **`renderResults`**, **`appendPage`**, **`rebuildVisibleRows`**, **`bindScrollPaging`** — must not read modal globals.
+  - **`QobuzGui.features.lyrics.attach`** (`lyricAttach.js`): **`previewRow(ctx, id)`**, **`attachRow(ctx, id, confidence, kind, btn)`**.
+  - **`QobuzGui.ui.popoverPositioning`** (`js/ui/popoverPositioning.js`): **`positionAboveDownloadHistory(pop)`**.
+  - **`QobuzGui.features.lyrics.internals`** (anchor/title/loading helpers set by **`lyricSearchModal.js`**; **`parseLrcLinesForPreview`** from **`lrcPreviewParser.js`**): attach-track bootstrap reads anchor helpers here; callers should prefer **`preview.parseLrcLines`** and **`search.openForCard`** / **`search.close`**.
 - Do not introduce unrelated globals except the compatibility adapters listed below.
 
 ## Extraction sequencing (human process)
