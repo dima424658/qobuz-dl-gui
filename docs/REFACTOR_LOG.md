@@ -782,6 +782,43 @@ Commit: pending
 
 - **D1 download extraction complete.** All planned download runtime modules (D1A–D1F) are landed; **`app.js`** download tab owns bootstrap wiring + history/queue orchestration only.
 
+## Checkpoint C1 — Clear history confirm (`clearHistoryConfirm.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/history/clearHistoryConfirm.js`: **`bootstrapClearHistoryConfirm(deps)`** owns **`#dl-clear-history-confirm`** popover position, backdrop/Escape close, and Clear/Cancel/confirm button bindings.
+- **`deps`:** **`onConfirmClear`** — **`app.js`** wires **`_resetTrackStatusCards`** (lyrics close + history store clear + queue badge refresh stay in bootstrap).
+- **`app.js`**: removed inline confirm helpers; **`_historyClearConfirmHost`** set in **`initDownload()`**.
+- **`index.html`**: **`clearHistoryConfirm.js`** after **`historyCardRendering.js`**.
+
+### Validation
+
+- `node --check` on **`clearHistoryConfirm.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+## Checkpoint S1 — Status / setup shell (`statusController.js`, `setup/*`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/status/statusController.js`: **`QobuzGui.features.status`** (`updateStatus`, **`checkStatus`** with tolerant **`statusApi` → `getJson` → `fetch`** chain).
+- Added `qobuz_dl/gui/js/features/setup/authTabs.js`, **`browseButtons.js`**, **`setupController.js`**: additive **`QG.features.setup`** namespace; **`configure(_deps)`** before **`initSetup()`**; **`showApp`** calls injected **`startDownloadSse`**; OAuth/token/legacy + **`resolveInitialView`** moved out of **`app.js`**.
+- **`app.js`**: slim **`init()`** — **`setup.configure`** → auth/browse/setup init → **`initDownload()`** → settings/search → **`resolveInitialView()`**; **`initSettings`** / issue report use **`features.status.*`**.
+- **`index.html`**: status + setup scripts before **`settingsForm.js`**; **`app.js?v=100`**.
+
+### Validation
+
+- `node --check` on new modules + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **`browseButtons.js`** binds all **`.btn-browse`** (setup + settings), not setup-only.
+- Settings re-auth OAuth poll remains in **`initSettings()`** (optional S2 dedupe with **`initSetup`**).
+
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
 These items are **intentionally not done** yet; captured so we do not mistake interim layout for finished structure.
@@ -789,8 +826,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A–D1F (complete)
-Next: optional later — feedback subsystem split, script-order cleanup
+Done: queue internals, history H1–H6 + C1, replacements R1–R3, lyrics L1–L2, download D1A–D1F (complete), status/setup S1
+Next: optional later — settings handlers split, feedback subsystem split, script-order cleanup
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -810,6 +847,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1F** are landed. Download runtime extraction is **complete**; **`app.js`** download tab is bootstrap wiring + orchestration only.
+**Frontend migration (~85%+):** History H1–H6 + **C1**, **replacements R1–R3**, **lyrics L1–L2**, **download D1A–D1F** (complete), and **status/setup S1** are landed. **`app.js`** is bootstrap wiring + settings handlers + orchestration.
 
 

@@ -94,6 +94,8 @@
   let _historyVirtHost = null;
   /** H6 hydrate/persist host (set in `initDownload()`). */
   let _historyStoreHost = null;
+  /** C1 clear-history confirm host (set in `initDownload()`). */
+  let _historyClearConfirmHost = null;
   const _emptyHistoryMap = new Map();
   /** R2 attach-track popover host (set in `initDownload()`). */
   let _replacementAttachHost = null;
@@ -330,291 +332,6 @@
     }
     _queueHost.refreshAlbumQueueCardMetas();
     _tsUpdateErrorHistoryCountBadge();
-  }
-
-  function _positionClearHistoryConfirm() {
-    const btn = document.getElementById("dl-clear-track-status");
-    const pop = document.getElementById("dl-clear-history-confirm");
-    if (!btn || !pop || pop.classList.contains("hidden")) return;
-    const pad = 8;
-    const r = btn.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const mw = Math.min(280, vw - pad * 2);
-    pop.style.top = `${Math.round(r.bottom + 6)}px`;
-    let left = r.right - mw;
-    left = Math.max(pad, Math.min(left, vw - pad - mw));
-    pop.style.left = `${Math.round(left)}px`;
-    pop.style.right = "auto";
-  }
-
-  function _clearHistoryBackdrop(e) {
-    const pop = document.getElementById("dl-clear-history-confirm");
-    const btn = document.getElementById("dl-clear-track-status");
-    if (!pop || pop.classList.contains("hidden")) return;
-    if ((btn && btn.contains(e.target)) || pop.contains(e.target)) return;
-    _closeClearHistoryConfirm();
-  }
-
-  function _clearHistoryEsc(e) {
-    if (e.key === "Escape") _closeClearHistoryConfirm();
-  }
-
-  function _closeClearHistoryConfirm() {
-    const pop = document.getElementById("dl-clear-history-confirm");
-    const btn = document.getElementById("dl-clear-track-status");
-    if (!pop || pop.classList.contains("hidden")) return;
-    pop.classList.add("hidden");
-    document.removeEventListener("mousedown", _clearHistoryBackdrop);
-    window.removeEventListener("resize", _positionClearHistoryConfirm);
-    document.removeEventListener("keydown", _clearHistoryEsc);
-    if (btn) {
-      btn.setAttribute("aria-expanded", "false");
-      btn.focus();
-    }
-  }
-
-  function _openClearHistoryConfirm() {
-    const pop = document.getElementById("dl-clear-history-confirm");
-    const btn = document.getElementById("dl-clear-track-status");
-    if (!pop || !btn) return;
-    pop.classList.remove("hidden");
-    btn.setAttribute("aria-expanded", "true");
-    _positionClearHistoryConfirm();
-    requestAnimationFrame(() => {
-      document.getElementById("dl-clear-history-cancel")?.focus();
-    });
-    setTimeout(() => {
-      document.addEventListener("mousedown", _clearHistoryBackdrop);
-      window.addEventListener("resize", _positionClearHistoryConfirm);
-      document.addEventListener("keydown", _clearHistoryEsc);
-    }, 0);
-  }
-
-  // ── Status polling ────────────────────────────────────────
-  function updateStatus(ready) {
-    const dot = document.getElementById("status-dot");
-    const label = document.getElementById("status-label");
-    if (ready) {
-      dot.className = "status-dot connected";
-      label.textContent = "Connected";
-    } else {
-      dot.className = "status-dot disconnected";
-      label.textContent = "Disconnected";
-    }
-  }
-
-  async function checkStatus() {
-    try {
-      const { data } = api
-        ? await api.getJson("/api/status")
-        : await (async () => {
-            const res = await api.statusApi.fetchRaw();
-            return { data: await res.json() };
-          })();
-      updateStatus(data.ready);
-      return data;
-    } catch (e) {
-      updateStatus(false);
-      return null;
-    }
-  }
-
-  // ── Setup overlay ─────────────────────────────────────────
-  function showSetup() {
-    document.getElementById("setup-overlay").classList.remove("hidden");
-    document.getElementById("app").classList.add("hidden");
-  }
-
-  function showApp() {
-    document.getElementById("setup-overlay").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-    _startDownloadSse();
-  }
-
-  // ── Browse folder ─────────────────────────────────────────
-  function initBrowseButtons() {
-    document.querySelectorAll(".btn-browse").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          const res = await api.utilityApi.browseFolder();
-          const data = await res.json();
-          if (data.ok && data.path) {
-            const targetId = btn.dataset.target;
-            const input = document.getElementById(targetId);
-            if (input) input.value = data.path;
-          }
-        } catch (e) {
-          console.error("Browse error:", e);
-        }
-      });
-    });
-  }
-
-  // ── Auth method tabs ──────────────────────────────────────
-  function initAuthTabs() {
-    document.querySelectorAll(".auth-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        document
-          .querySelectorAll(".auth-tab")
-          .forEach((t) => t.classList.remove("active"));
-        document
-          .querySelectorAll(".auth-panel")
-          .forEach((p) => p.classList.add("hidden"));
-        tab.classList.add("active");
-        document
-          .getElementById("auth-panel-" + tab.dataset.auth)
-          .classList.remove("hidden");
-      });
-    });
-  }
-
-  function initSetup() {
-    // ── OAuth button ────────────────────────────────────────
-    const oauthBtn = document.getElementById("oauth-btn");
-    const oauthBtnText = document.getElementById("oauth-btn-text");
-    const oauthSpinner = document.getElementById("oauth-spinner");
-    const oauthErr = document.getElementById("setup-error-oauth");
-    let _oauthPolling = null;
-
-    oauthBtn.addEventListener("click", async () => {
-      oauthErr.classList.add("hidden");
-      oauthBtn.disabled = true;
-      oauthBtnText.textContent = "Opening browser…";
-      oauthSpinner.classList.remove("hidden");
-
-      try {
-        const res = await api.setupApi.oauthStart();
-        const data = await res.json();
-        if (!data.ok) {
-          oauthErr.textContent = data.error || "OAuth start failed.";
-          oauthErr.classList.remove("hidden");
-          return;
-        }
-        oauthBtnText.textContent = "Waiting for browser login…";
-        // Poll status until connected
-        _oauthPolling = setInterval(async () => {
-          const s = await checkStatus();
-          if (s && s.ready) {
-            clearInterval(_oauthPolling);
-            oauthBtn.disabled = false;
-            oauthBtnText.textContent = "Login with Qobuz";
-            oauthSpinner.classList.add("hidden");
-            showApp();
-            await QG.features.settings.settingsForm.loadIntoForm();
-          }
-        }, 1500);
-      } catch (e) {
-        oauthErr.textContent = "Network error: " + e.message;
-        oauthErr.classList.remove("hidden");
-        oauthBtn.disabled = false;
-        oauthBtnText.textContent = "Login with Qobuz";
-        oauthSpinner.classList.add("hidden");
-      }
-    });
-
-    // ── Token button ────────────────────────────────────────
-    const tokenBtn = document.getElementById("token-btn");
-    const tokenBtnText = document.getElementById("token-btn-text");
-    const tokenSpinner = document.getElementById("token-spinner");
-    const tokenErr = document.getElementById("setup-error-token");
-
-    tokenBtn.addEventListener("click", async () => {
-      const user_id = document.getElementById("setup-user-id").value.trim();
-      const user_auth_token = document
-        .getElementById("setup-user-auth-token")
-        .value.trim();
-      const folder =
-        document.getElementById("setup-folder-token").value.trim() ||
-        "Qobuz Downloads";
-      const quality = document.getElementById("setup-quality-token").value;
-
-      tokenErr.classList.add("hidden");
-      if (!user_id || !user_auth_token) {
-        tokenErr.textContent = "Please enter both User ID and User Auth Token.";
-        tokenErr.classList.remove("hidden");
-        return;
-      }
-
-      tokenBtn.disabled = true;
-      tokenBtnText.textContent = "Connecting…";
-      tokenSpinner.classList.remove("hidden");
-
-      try {
-        const res = await api.setupApi.tokenLogin({
-            user_id,
-            user_auth_token,
-            default_folder: folder,
-            default_quality: quality,
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showApp();
-          updateStatus(true);
-          await QG.features.settings.settingsForm.loadIntoForm();
-        } else {
-          tokenErr.textContent = data.error || "Token login failed.";
-          tokenErr.classList.remove("hidden");
-        }
-      } catch (e) {
-        tokenErr.textContent = "Network error: " + e.message;
-        tokenErr.classList.remove("hidden");
-      } finally {
-        tokenBtn.disabled = false;
-        tokenBtnText.textContent = "Connect with Token";
-        tokenSpinner.classList.add("hidden");
-      }
-    });
-
-    // ── Email/Password button (legacy) ───────────────────────
-    const btn = document.getElementById("setup-btn");
-    const btnText = document.getElementById("setup-btn-text");
-    const spinner = document.getElementById("setup-spinner");
-    const errEl = document.getElementById("setup-error");
-
-    btn.addEventListener("click", async () => {
-      const email = document.getElementById("setup-email").value.trim();
-      const password = document.getElementById("setup-password").value;
-      const folder =
-        document.getElementById("setup-folder").value.trim() ||
-        "Qobuz Downloads";
-      const quality = document.getElementById("setup-quality").value;
-
-      errEl.classList.add("hidden");
-      if (!email || !password) {
-        errEl.textContent = "Please enter your email and password.";
-        errEl.classList.remove("hidden");
-        return;
-      }
-
-      btn.disabled = true;
-      btnText.textContent = "Connecting…";
-      spinner.classList.remove("hidden");
-
-      try {
-        const res = await api.setupApi.setup({
-            email,
-            password,
-            default_folder: folder,
-            default_quality: quality,
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showApp();
-          updateStatus(true);
-          await QG.features.settings.settingsForm.loadIntoForm();
-        } else {
-          errEl.textContent = data.error || "Setup failed.";
-          errEl.classList.remove("hidden");
-        }
-      } catch (e) {
-        errEl.textContent = "Network error: " + e.message;
-        errEl.classList.remove("hidden");
-      } finally {
-        btn.disabled = false;
-        btnText.textContent = "Save & Connect";
-        spinner.classList.add("hidden");
-      }
-    });
   }
 
   // ── Cover art mutual exclusivity ──────────────────────────
@@ -1013,27 +730,18 @@
       });
     }
 
-    const clearTrackStatusBtn = document.getElementById("dl-clear-track-status");
-    const clearHistoryConfirm = document.getElementById("dl-clear-history-confirm");
-    const clearHistoryCancel = document.getElementById("dl-clear-history-cancel");
-    const clearHistoryDo = document.getElementById("dl-clear-history-confirm-do");
-    if (clearTrackStatusBtn && clearHistoryConfirm) {
-      clearTrackStatusBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!clearHistoryConfirm.classList.contains("hidden")) {
-          _closeClearHistoryConfirm();
-          return;
-        }
-        _openClearHistoryConfirm();
-      });
+    if (
+      QG.features.history &&
+      QG.features.history.internals &&
+      typeof QG.features.history.internals.bootstrapClearHistoryConfirm ===
+        "function"
+    ) {
+      _historyClearConfirmHost =
+        QG.features.history.internals.bootstrapClearHistoryConfirm({
+          onConfirmClear: _resetTrackStatusCards,
+        });
     }
-    clearHistoryCancel?.addEventListener("click", () => {
-      _closeClearHistoryConfirm();
-    });
-    clearHistoryDo?.addEventListener("click", async () => {
-      _closeClearHistoryConfirm();
-      await _resetTrackStatusCards();
-    });
+
     _lyricSearch().init({
       closeAttachPopover: () => {
         if (
@@ -1167,7 +875,7 @@
 
   function initSettings() {
     const feedback = document.getElementById("settings-popover-feedback");
-    QG.features.feedback.issueReport.init(checkStatus);
+    QG.features.feedback.issueReport.init(QG.features.status.checkStatus);
 
     // ── Re-auth (OAuth) ───────────────────────────────────────
     const reauthBtn = document.getElementById("settings-reauth-btn");
@@ -1188,14 +896,14 @@
         reauthText.textContent = "Waiting for login…";
         if (_reauthPolling) clearInterval(_reauthPolling);
         _reauthPolling = setInterval(async () => {
-          const s = await checkStatus();
+          const s = await QG.features.status.checkStatus();
           if (s && s.ready) {
             clearInterval(_reauthPolling);
             _reauthPolling = null;
             reauthText.textContent = "Re-login with Qobuz";
             reauthSpinner.classList.add("hidden");
             reauthBtn.disabled = false;
-            updateStatus(true);
+            QG.features.status.updateStatus(true);
             await QG.features.settings.settingsForm.loadIntoForm();
             QG.ui.feedbackMessage.show(feedback, "Reconnected successfully.", true);
           }
@@ -1281,9 +989,16 @@
   async function init() {
     window.QobuzGui.ui.collapses.init();
     window.QobuzGui.ui.resetButtons.init();
-    initAuthTabs();
-    initSetup();
-    initBrowseButtons();
+
+    QG.features.setup.configure({
+      startDownloadSse: _startDownloadSse,
+      loadSettingsForm: () => QG.features.settings.settingsForm.loadIntoForm(),
+      connect: () => api.setupApi.connect(),
+    });
+    QG.features.setup.authTabs.init();
+    QG.features.setup.browseButtons.init();
+    QG.features.setup.initSetup();
+
     initDownload();
     QG.features.search.init();
     initSettings();
@@ -1292,27 +1007,7 @@
       void window.QobuzGui.features.updateBanner.refreshUpdateCheck(true);
     }, 800);
 
-    const status = await checkStatus();
-    if (status && (status.ready || status.has_config)) {
-      showApp();
-      if (!status.ready && status.has_config) {
-        // Config exists but client not init yet | auto-connect
-        const dot = document.getElementById("status-dot");
-        const label = document.getElementById("status-label");
-        dot.className = "status-dot connecting";
-        label.textContent = "Connecting…";
-        try {
-          const res = await api.setupApi.connect();
-          const data = await res.json();
-          updateStatus(data.ok);
-        } catch (e) {
-          updateStatus(false);
-        }
-      }
-      await QG.features.settings.settingsForm.loadIntoForm();
-    } else {
-      showSetup();
-    }
+    await QG.features.setup.resolveInitialView();
   }
 
   document.addEventListener("DOMContentLoaded", init);
