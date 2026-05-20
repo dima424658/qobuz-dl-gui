@@ -681,8 +681,48 @@ Commit: pending
 
 ### Notes
 
-- **D1A intentionally does not migrate any callers yet.** `startSSE()`, `window._handleDlStatus`, `window._qUrlForPurchaseSlot`, and the download button handler remain owned by **`app.js`** until D1B–D1F. Only the plug socket exists.
-- Next: **D1B** progress/button state; then D1C purchase-only queue issues; D1D SSE handler; D1E start/pause click flow; D1F EventSource ownership.
+- **D1A intentionally does not migrate any callers yet.** `startSSE()`, `window._handleDlStatus`, and the download button handler remain owned by **`app.js`** until D1D–D1F. Only the plug socket exists. (**`window._qUrlForPurchaseSlot`** moved to D1C — see Checkpoint D1C.)
+- Next: **D1B** progress/button state (see Checkpoint D1B); then D1C purchase-only queue issues (see Checkpoint D1C).
+
+## Checkpoint D1B — Download progress + button state (`downloadProgress.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/downloadProgress.js`: **`QobuzGui.features.download.internals.bootstrapProgress(deps)`** owns URL/track counters, progress bar DOM, Start/Pause button chrome, and **`window.isDownloading`**. Exposes `resetForStart`, `onTotalTracks`, `recordTrackFinished`, `onUrlDone`, `onUrlError`, `updateProgress`, `setDownloadingState`, `finalizeOnDlComplete`, `isDownloading`.
+- **`app.js`**: **`_downloadProgressHost`** + **`_dlProgress()`**; bootstrap after queue host in **`initDownload()`**; removed inline progress counter + **`_updateProgress`/`_setDownloadingState`** block; SSE handler + dl-btn start/pause call **`_dlProgress()`**; **`features.download.install`** **`isDownloading`** delegates to progress host when present.
+- **`index.html`**: **`downloadProgress.js`** after **`downloadController.js`**; **`app.js?v=96`**.
+
+### Validation
+
+- `node --check` on **`downloadProgress.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- Module file existed from an earlier pass but was not wired into **`app.js`** / **`index.html`** until this checkpoint completion.
+- **Still in `app.js` (D1D+):** full **`window._handleDlStatus`** body, **`#dl-btn`** handler, **`startSSE`**, **`_sse`**.
+
+## Checkpoint D1C — Queue purchase-only badges (`queueIssueBadges.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/queueIssueBadges.js`: **`QobuzGui.features.download.internals.bootstrapQueueIssueBadges(deps)`** owns purchase-only key map, queue card badges/tips, URL error badges, and **`window._qUrlForPurchaseSlot`**. Exposes `tips`, `findCardByUrl`, `purchaseIssueSlotKey`, `qUrlForPurchaseSlot`, `syncPurchaseIssues`, `markPurchaseOnly`, `resolvePurchaseOnly`, `clearPurchaseIssues`, `applyUrlErrorBadge`.
+- **`app.js`**: **`_downloadQueueIssuesHost`** + **`_dlQueueIssues()`**; bootstrap after queue host; removed inline purchase-only map, **`_findCardByUrl`**, **`_syncQueueCardPurchaseIssues`**, tip constants, and url_error badge DOM; SSE handler + dl-btn start call **`_dlQueueIssues()`**; **`features.download.install`** **`qUrlForPurchaseSlot`** delegates to queue-issues host when present.
+- **`index.html`**: **`queueIssueBadges.js`** after **`downloadController.js`**; **`app.js?v=95`**.
+
+### Validation
+
+- `node --check` on **`queueIssueBadges.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **Still in `app.js` (D1D+):** full **`window._handleDlStatus`** body (now thinner but still inline), **`#dl-btn`** handler, **`startSSE`**, **`_sse`**.
+- Next: **D1D** SSE status handler extraction; D1E start/pause click flow; D1F EventSource ownership.
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -691,8 +731,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket)
-Next: download D1B (progress/button state), then D1C–D1F
+Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket), download D1B (progress/button state), download D1C (queue purchase-only badges)
+Next: download D1D (SSE status handler), then D1E–D1F
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -712,6 +752,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A** (façade) are landed. **`app.js`** still owns download/SSE runtime until D1B–D1F. Next controlled step: **D1B** (progress/button state).
+**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1C** are landed. **`app.js`** still owns SSE handler and dl-btn click flow until D1D–D1F. Next controlled step: **D1D** (SSE status handler body).
 
 

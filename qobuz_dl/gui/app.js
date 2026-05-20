@@ -40,6 +40,14 @@
     return QG.features.download;
   }
 
+  function _dlQueueIssues() {
+    return _downloadQueueIssuesHost;
+  }
+
+  function _dlProgress() {
+    return _downloadProgressHost;
+  }
+
   function _getHistoryDbMap() {
     return _historyStoreHost
       ? _historyStoreHost.getDbItemByKey()
@@ -47,6 +55,10 @@
   }
 
   let _queueHost = null;
+  /** D1C queue purchase-only / URL error badge host (set in `initDownload()`). */
+  let _downloadQueueIssuesHost = null;
+  /** D1B progress bar + Start/Pause button host (set in `initDownload()`). */
+  let _downloadProgressHost = null;
   /** H5 virtualization host (set in `initDownload()`). */
   let _historyVirtHost = null;
   /** H6 hydrate/persist host (set in `initDownload()`). */
@@ -629,6 +641,40 @@
       syncSearchQueuedHighlights: _syncSearchQueuedHighlights,
     });
     if (
+      QG.features.download &&
+      QG.features.download.internals &&
+      typeof QG.features.download.internals.bootstrapQueueIssueBadges ===
+        "function"
+    ) {
+      _downloadQueueIssuesHost =
+        QG.features.download.internals.bootstrapQueueIssueBadges({
+          trackKey: (trackNo, title, album) =>
+            _trackKey(trackNo, title, album),
+          findQueueItemByUrl: (q) =>
+            _queueHost.urlQueue.find((x) => x.url === q) || null,
+          albumQueueItemNeedsToStayVisible: (qi) =>
+            _queueHost.albumQueueItemNeedsToStayVisible(qi),
+          refreshAlbumQueueCardMetas: () =>
+            _queueHost.refreshAlbumQueueCardMetas(),
+          removeFromQueue: (url, card) =>
+            _queueHost.removeFromQueue(url, card),
+        });
+    }
+    if (
+      QG.features.download &&
+      QG.features.download.internals &&
+      typeof QG.features.download.internals.bootstrapProgress === "function"
+    ) {
+      _downloadProgressHost =
+        QG.features.download.internals.bootstrapProgress({
+          updateQueueBadge: () => {
+            if (typeof window._updateQueueBadge === "function") {
+              window._updateQueueBadge();
+            }
+          },
+        });
+    }
+    if (
       QG.features.history &&
       QG.features.history.internals &&
       typeof QG.features.history.internals.bootstrapVirtualization ===
@@ -879,166 +925,12 @@
       }
     };
 
-    // URL-level counters (for card state management)
-    let _dlTotal = 0;
-    let _dlDone = 0;
-
-    // Track-level counters (drive the progress bar)
-    let _dlTrackTotal = 0;
-    let _dlTrackDone = 0;
-    let _dlTotalLocked = false;
-    let _dlTrackFinished = new Set();
-    /** Queue URL → track keys still counted as purchase-only on the album badge. */
-    let _purchaseOnlyKeysByUrl = new Map();
-
-    window._qUrlForPurchaseSlot = (slotId) => {
-      const sid = String(slotId || "").trim();
-      if (!sid) return "";
-      const pk = `sid:${sid}`;
-      for (const [url, set] of _purchaseOnlyKeysByUrl.entries()) {
-        if (set.has(pk)) return url;
-      }
-      return "";
-    };
-
-    const DL_TIP_PURCHASE_QUEUE =
-      "Open album on Qobuz to purchase (full album required for these tracks)";
-    const DL_TIP_NOT_STREAMABLE =
-      "This release is not available for streaming on Qobuz. It may only be sold as a full album (purchase-only or region-restricted), open it on Qobuz to check.";
-    const DL_TIP_QUEUE_URL_ERROR_GENERIC =
-      "This queue item did not finish successfully. Check the activity log for details — causes include network errors, quality restrictions, or tracks that could not be downloaded.";
-
-    function _findCardByUrl(url) {
-      const cards = document.querySelectorAll("#dl-queue .queue-card");
-      for (const c of cards) if (c.dataset.url === url) return c;
-      return null;
-    }
-
-    function _syncQueueCardPurchaseIssues(qurl) {
-      const q = String(qurl || "").trim();
-      if (!q) return;
-      const card = _findCardByUrl(q);
-      if (!card) return;
-      const info = card.querySelector(".queue-card-info");
-      if (!info) return;
-      const set = _purchaseOnlyKeysByUrl.get(q);
-      const purchaseBadge = info.querySelector(".dl-error-badge.dl-purchase-badge");
-      const failedBadge = info.querySelector(".dl-error-badge.dl-url-failed-badge");
-      const qiHold = _queueHost.urlQueue.find((x) => x.url === q);
-      const stayAlbum =
-        qiHold != null && _queueHost.albumQueueItemNeedsToStayVisible(qiHold);
-
-      if (!set || set.size === 0) {
-        _purchaseOnlyKeysByUrl.delete(q);
-        if (purchaseBadge) purchaseBadge.remove();
-        if (!failedBadge && !stayAlbum) {
-          card.classList.remove("dl-error");
-        }
-        const stillActive =
-          card.classList.contains("dl-active") ||
-          card.classList.contains("dl-pending");
-        if (!stillActive && !failedBadge) {
-          if (stayAlbum) {
-            card.classList.add("dl-error");
-            _queueHost.refreshAlbumQueueCardMetas();
-            return;
-          }
-          card.classList.add("dl-done");
-          setTimeout(() => _queueHost.removeFromQueue(q, card), 1400);
-        }
-        return;
-      }
-
-      let badge = purchaseBadge;
-      if (!badge) {
-        badge = document.createElement("span");
-        badge.className = "dl-error-badge dl-purchase-badge";
-        badge.setAttribute("data-tip", DL_TIP_PURCHASE_QUEUE);
-        badge.setAttribute("aria-label", DL_TIP_PURCHASE_QUEUE);
-        badge.removeAttribute("title");
-        info.appendChild(badge);
-      }
-      badge.textContent = `${set.size} ⚠ Purchase only`;
-      badge.setAttribute("data-tip", DL_TIP_PURCHASE_QUEUE);
-      badge.setAttribute("aria-label", DL_TIP_PURCHASE_QUEUE);
-      badge.removeAttribute("title");
-    }
-
-    function _purchaseIssueSlotKey(ev, resAlb) {
-      const sid = String(ev.slot_track_id || "").trim();
-      if (sid) return `sid:${sid}`;
-      return _trackKey(ev.track_no, ev.title, resAlb);
-    }
-
-    function _updateProgress() {
-      const fill = document.getElementById("dl-progress-fill");
-      const label = document.getElementById("dl-progress-label");
-      const cap = Math.max(_dlTrackTotal, _dlTrackDone); // never go backward
-
-      if (fill) {
-        const pct = cap > 0 ? Math.round((_dlTrackDone / cap) * 100) : 0;
-        fill.style.width = pct + "%";
-      }
-      if (label) {
-        label.textContent = `${_dlTrackDone} / ${cap} tracks`;
-        label.title = "";
-      }
-    }
-
-    function _setDownloadingState(isDownloading) {
-      const dlBtn = document.getElementById("dl-btn");
-      const progressWrap = document.getElementById("dl-progress-wrap");
-      window.isDownloading = isDownloading;
-
-      if (isDownloading) {
-        dlBtn.dataset.state = "downloading";
-        dlBtn.innerHTML = `
-          <span class="dl-btn-body">
-            <svg id="dl-btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
-                 aria-hidden="true">
-              <rect x="4" y="4" width="6" height="16" rx="1.5"/>
-              <rect x="14" y="4" width="6" height="16" rx="1.5"/>
-            </svg>
-            <span id="dl-btn-text">Pause</span>
-          </span>`;
-        dlBtn.disabled = false;
-        progressWrap.classList.remove("hidden");
-        _updateProgress();
-        // Hide remove buttons while downloading
-        document
-          .querySelectorAll("#dl-queue .queue-card-remove")
-          .forEach((b) => (b.style.display = "none"));
-      } else {
-        dlBtn.dataset.state = "idle";
-        dlBtn.innerHTML = `
-          <span class="dl-btn-body">
-            <svg id="dl-btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span id="dl-btn-text">Start Download</span>
-          </span>
-          <span id="dl-btn-badge" class="dl-btn-badge hidden" aria-live="polite"></span>`;
-        window._updateQueueBadge();
-        dlBtn.disabled = false;
-        // Re-enable remove buttons on leftover (error) cards
-        document
-          .querySelectorAll("#dl-queue .queue-card-remove")
-          .forEach((b) => (b.style.display = ""));
-        setTimeout(() => progressWrap.classList.add("hidden"), 2000);
-      }
-    }
-
     // Called by SSE 'status' events
     window._handleDlStatus = function (ev) {
       if (ev.type === "total_tracks") {
-        _dlTrackTotal = ev.count;
-        _dlTotalLocked = true;
-        _updateProgress();
+        _dlProgress()?.onTotalTracks(ev.count);
       } else if (ev.type === "url_start") {
-        const card = _findCardByUrl(ev.url);
+        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
         if (card) {
           card.classList.remove("dl-pending");
           card.classList.add("dl-active");
@@ -1100,7 +992,7 @@
         );
           }
         }
-        _updateProgress();
+        _dlProgress()?.updateProgress();
         _hist().applyFilter();
       } else if (ev.type === "track_download_progress") {
         const pa =
@@ -1118,13 +1010,7 @@
         const resAlb = _lyricAlbumForTrackEv(ev);
         const qurl = String(ev.source_url || "").trim();
         const slotProgKey = _trackKey(ev.track_no, ev.title, resAlb);
-        if (!_dlTrackFinished.has(slotProgKey)) {
-          _dlTrackFinished.add(slotProgKey);
-          _dlTrackDone++;
-          if (!_dlTotalLocked && _dlTrackDone > _dlTrackTotal) {
-            _dlTrackTotal = _dlTrackDone + 1;
-          }
-        }
+        _dlProgress()?.recordTrackFinished(slotProgKey);
         const st = String(ev.status || "").toLowerCase();
         const isFailed = st === "failed";
         const isPurchase = st === "purchase_only";
@@ -1173,7 +1059,9 @@
             "failed",
             {
               href: detail,
-              titleAttr: DL_TIP_PURCHASE_QUEUE,
+              titleAttr:
+                _dlQueueIssues()?.tips?.purchaseQueue ||
+                "Open album on Qobuz to purchase (full album required for these tracks)",
               slotTrackId: sidTrim,
               releaseAlbumId: ridTrim,
             },
@@ -1265,28 +1153,13 @@
           }
           if (_historyVirtHost) _historyVirtHost.onScroll();
         }
-        const pk = _purchaseIssueSlotKey(ev, resAlb);
+        const pk = _dlQueueIssues()?.purchaseIssueSlotKey(ev, resAlb);
         if (isPurchase && qurl) {
-          let pset = _purchaseOnlyKeysByUrl.get(qurl);
-          if (!pset) {
-            pset = new Set();
-            _purchaseOnlyKeysByUrl.set(qurl, pset);
-          }
-          pset.add(pk);
-          const qcard = _findCardByUrl(qurl);
-          if (qcard) {
-            qcard.classList.remove("dl-active", "dl-pending", "dl-done");
-            qcard.classList.add("dl-error");
-            _syncQueueCardPurchaseIssues(qurl);
-          }
+          _dlQueueIssues()?.markPurchaseOnly(qurl, pk);
         } else if (st === "downloaded" && qurl) {
-          const pset = _purchaseOnlyKeysByUrl.get(qurl);
-          if (pset && pset.delete(pk) && pset.size === 0) {
-            _purchaseOnlyKeysByUrl.delete(qurl);
-          }
-          _syncQueueCardPurchaseIssues(qurl);
+          _dlQueueIssues()?.resolvePurchaseOnly(qurl, pk);
         }
-        _updateProgress();
+        _dlProgress()?.updateProgress();
         _hist().applyFilter();
         _queueHost.refreshAlbumQueueCardMetas();
       } else if (ev.type === "track_lyrics") {
@@ -1328,11 +1201,8 @@
           _hist().applyFilter();
         }
       } else if (ev.type === "url_done") {
-        _dlDone++;
-        // Sync track total upward if real count exceeded estimate
-        if (_dlTrackDone > _dlTrackTotal) _dlTrackTotal = _dlTrackDone;
-        _updateProgress();
-        const card = _findCardByUrl(ev.url);
+        _dlProgress()?.onUrlDone();
+        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
         if (card) {
           card.classList.remove("dl-active", "dl-pending");
           const qi = _queueHost.urlQueue.find((x) => x.url === ev.url);
@@ -1349,46 +1219,13 @@
           }
         }
       } else if (ev.type === "url_error") {
-        _dlDone++;
-        _updateProgress();
-        const card = _findCardByUrl(ev.url);
+        _dlProgress()?.onUrlError();
+        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
         if (card) {
-          card.classList.remove("dl-active", "dl-pending");
-          card.classList.add("dl-error");
-          const info = card.querySelector(".queue-card-info");
-          if (info) {
-            let badge = info.querySelector(".dl-error-badge.dl-url-failed-badge");
-            if (!badge) {
-              badge = document.createElement("span");
-              badge.className = "dl-error-badge dl-url-failed-badge";
-              info.appendChild(badge);
-            }
-            const detail = String(ev.detail || "").trim();
-            const isNonStream = detail === "non_streamable";
-            const tip = isNonStream
-              ? DL_TIP_NOT_STREAMABLE
-              : DL_TIP_QUEUE_URL_ERROR_GENERIC;
-            badge.textContent = isNonStream
-              ? "⚠ Not streamable"
-              : "⚠ Download issue";
-            badge.setAttribute("data-tip", tip);
-            badge.setAttribute("aria-label", tip);
-            badge.removeAttribute("title");
-          }
+          _dlQueueIssues()?.applyUrlErrorBadge(card, ev);
         }
       } else if (ev.type === "dl_complete") {
-        // Snap progress to 100% and show final count
-        _dlTrackTotal = Math.max(_dlTrackTotal, _dlTrackDone);
-        const fill = document.getElementById("dl-progress-fill");
-        const holdProg = Boolean(ev.cancelled || ev.paused);
-        if (fill) {
-          fill.style.width = holdProg ? fill.style.width : "100%";
-        }
-        const label = document.getElementById("dl-progress-label");
-        if (label) {
-          label.textContent = `${_dlTrackDone} track${_dlTrackDone !== 1 ? "s" : ""}`;
-          label.title = "";
-        }
+        _dlProgress()?.finalizeOnDlComplete(ev);
         // Reset cards still marked as active once the graceful stop settles
         if (ev.cancelled || ev.paused) {
           document
@@ -1402,7 +1239,7 @@
         dlBtn.style.opacity = "";
         dlBtn.style.cursor = "";
         dlBtn.style.pointerEvents = "";
-        _setDownloadingState(false);
+        _dlProgress()?.setDownloadingState(false);
         _queueHost.refreshAlbumQueueCardMetas();
       }
     };
@@ -1426,7 +1263,7 @@
           dlBtn.style.opacity = "";
           dlBtn.style.cursor = "";
           dlBtn.style.pointerEvents = "";
-          _setDownloadingState(true);
+          _dlProgress()?.setDownloadingState(true);
         }
         return;
       }
@@ -1524,17 +1361,17 @@
         const data = await res.json();
         if (data.ok) {
           // Mark all visible queue cards as pending (keep them in the list)
-          _dlTotal = data.queued;
-          _dlDone = 0;
-          _dlTrackTotal = _queueHost.textMode ? data.queued : _queueHost.calcProgressDenominatorFromQueue();
-          _dlTrackDone = 0;
-          _dlTotalLocked = false;
-          _dlTrackFinished = new Set();
-          _purchaseOnlyKeysByUrl = new Map();
+          _dlProgress()?.resetForStart({
+            urlQueued: data.queued,
+            trackTotal: _queueHost.textMode
+              ? data.queued
+              : _queueHost.calcProgressDenominatorFromQueue(),
+          });
+          _dlQueueIssues()?.clearPurchaseIssues();
           document.querySelectorAll("#dl-queue .queue-card").forEach((c) => {
             c.classList.add("dl-pending");
           });
-          _setDownloadingState(true);
+          _dlProgress()?.setDownloadingState(true);
         }
       } catch (_) {
         /* ignore */
@@ -1673,9 +1510,17 @@
           return Promise.resolve(null);
         },
         isDownloading() {
+          const prog = _downloadProgressHost;
+          if (prog && typeof prog.isDownloading === "function") {
+            return prog.isDownloading();
+          }
           return !!window.isDownloading;
         },
         qUrlForPurchaseSlot(slotId) {
+          const issues = _downloadQueueIssuesHost;
+          if (issues && typeof issues.qUrlForPurchaseSlot === "function") {
+            return issues.qUrlForPurchaseSlot(slotId) || "";
+          }
           return typeof window._qUrlForPurchaseSlot === "function"
             ? window._qUrlForPurchaseSlot(slotId) || ""
             : "";
