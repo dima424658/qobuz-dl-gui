@@ -466,7 +466,16 @@
 
   function _queueCardQualityStyleAttr(r) {
     const { r: rv, g: gv, b: bv } = _queueCardQualityRgb(r);
-    return ` style="color:rgb(${rv},${gv},${bv});border-color:rgba(${rv},${gv},${bv},0.55);background-color:rgba(${rv},${gv},${bv},0.17)"`;
+    const base = `--chip-r:${rv};--chip-g:${gv};--chip-b:${bv}`;
+    const uiTheme = window.QobuzGui?.ui?.theme;
+    if (uiTheme && uiTheme.get && uiTheme.get() === "light") {
+      return ` style="${base}"`;
+    }
+    const alphas =
+      typeof uiTheme?.chipQualitySurfaceAlphas === "function"
+        ? uiTheme.chipQualitySurfaceAlphas()
+        : { tint: 0.17, border: 0.55 };
+    return ` style="${base};color:rgb(${rv},${gv},${bv});border-color:rgba(${rv},${gv},${bv},${alphas.border});background-color:rgba(${rv},${gv},${bv},${alphas.tint})"`;
   }
 
   function _updateQueueCard(card, r) {

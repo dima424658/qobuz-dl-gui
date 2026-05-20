@@ -847,6 +847,7 @@
 
   // ── Init ─────────────────────────────────────────────────
   async function init() {
+    window.QobuzGui.ui.theme.init();
     window.QobuzGui.ui.collapses.init();
     window.QobuzGui.ui.resetButtons.init();
 

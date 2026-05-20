@@ -9,7 +9,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
         rel="stylesheet" />
-    <link rel="stylesheet" href="/gui/style.css" />
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem("qobuz_dl_gui_theme_v1") === "light") {
+                    document.documentElement.setAttribute("data-theme", "light");
+                    document.documentElement.style.colorScheme = "light";
+                }
+            } catch (e) { }
+        })();
+    </script>
+    <link rel="stylesheet" href="/gui/style.css?v=7" />
 </head>
 
 <body>
@@ -218,6 +228,25 @@
                 </div>
                 <div class="settings-wrapper">
                     <div class="sidebar-header-actions">
+                        <button type="button" id="theme-toggle" class="sidebar-theme-switch" role="switch"
+                            aria-checked="false" aria-label="Switch to light mode" data-tip="Light mode"
+                            data-tip-placement="bottom">
+                            <span class="sidebar-theme-switch-icons" aria-hidden="true">
+                                <svg class="sidebar-theme-switch-icon sidebar-theme-switch-icon--sun" width="11"
+                                    height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="4" />
+                                    <path
+                                        d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                                </svg>
+                                <svg class="sidebar-theme-switch-icon sidebar-theme-switch-icon--moon" width="11"
+                                    height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                                </svg>
+                            </span>
+                            <span class="sidebar-theme-switch-thumb" aria-hidden="true"></span>
+                        </button>
                         <button type="button" id="lucky-toggle-btn" class="sidebar-icon-btn lucky-toggle-btn"
                             aria-expanded="false" aria-controls="lucky-panel" data-tip="Show lucky search"
                             data-tip-placement="bottom" aria-label="Show lucky search">
@@ -1352,6 +1381,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/ui/globalTooltip.js?v=1"></script>
     <script src="/gui/js/ui/textFieldContextMenu.js?v=1"></script>
     <script src="/gui/js/ui/donationPopover.js?v=1"></script>
+    <script src="/gui/js/ui/theme.js?v=3"></script>
     <script src="/gui/js/ui/collapses.js?v=1"></script>
     <script src="/gui/js/ui/resetButtons.js?v=1"></script>
     <script src="/gui/js/ui/popoverPositioning.js?v=1"></script>

@@ -412,6 +412,10 @@
     }
 
     function confidenceChipStyles(pct) {
+      const uiTheme = window.QobuzGui?.ui?.theme;
+      if (uiTheme && typeof uiTheme.confidenceChipStylesFromPct === "function") {
+        return uiTheme.confidenceChipStylesFromPct(pct);
+      }
       const p = Math.max(0, Math.min(100, pct)) / 100;
       const r0 = 255;
       const g0 = 77;
@@ -422,10 +426,18 @@
       const r = Math.round(r0 + (r1 - r0) * p);
       const g = Math.round(g0 + (g1 - g0) * p);
       const b = Math.round(b0 + (b1 - b0) * p);
+      const tint =
+        typeof uiTheme?.chipSurfaceAlphas === "function"
+          ? uiTheme.chipSurfaceAlphas().tint
+          : 0.12;
+      const border =
+        typeof uiTheme?.chipSurfaceAlphas === "function"
+          ? uiTheme.chipSurfaceAlphas().border
+          : 0.45;
       return {
         color: `rgb(${r},${g},${b})`,
-        borderColor: `rgba(${r},${g},${b},0.45)`,
-        background: `rgba(${r},${g},${b},0.12)`,
+        borderColor: `rgba(${r},${g},${b},${border})`,
+        background: `rgba(${r},${g},${b},${tint})`,
       };
     }
 
@@ -537,11 +549,17 @@
       wrap.innerHTML = chipHtml;
       const chip = wrap.querySelector(".confidence-chip");
       const tip = wrap.querySelector(".confidence-chip-tooltip");
-      const styles = confidenceChipStyles(pct);
       chip.textContent = `${pct}%`;
-      chip.style.color = styles.color;
-      chip.style.borderColor = styles.borderColor;
-      chip.style.background = styles.background;
+      chip.dataset.confidencePct = String(pct);
+      const uiTheme = window.QobuzGui?.ui?.theme;
+      if (uiTheme && typeof uiTheme.applyConfidenceChipEl === "function") {
+        uiTheme.applyConfidenceChipEl(chip, pct);
+      } else {
+        const styles = confidenceChipStyles(pct);
+        chip.style.color = styles.color;
+        chip.style.borderColor = styles.borderColor;
+        chip.style.background = styles.background;
+      }
       wrap.setAttribute(
         "aria-label",
         `Lyric match confidence ${pct} percent. Hover for details.`,

@@ -1,29 +1,121 @@
 /* ============================================================
-   Qobuz-DL GUI | Dark Minimal Theme
+   Qobuz-DL GUI | Dark + Light themes
    ============================================================ */
 
 :root {
+    color-scheme: dark;
     --bg: #0d0d0d;
     --surface: #141414;
     --card: #1a1a1a;
     --card-hover: #1f1f1f;
     --border: #2a2a2a;
     --border-light: #222222;
+    --border-hover: #3a3a3a;
     --accent: #6ee7f7;
     --accent-dim: rgba(110, 231, 247, 0.12);
     --accent-glow: rgba(110, 231, 247, 0.08);
+    --accent-border: rgba(110, 231, 247, 0.35);
+    --on-accent: #0d0d0d;
     --text: #f0f0f0;
     --text-secondary: #a0a0a0;
     --text-muted: #555555;
     --danger: #ff4d4d;
     --danger-dim: rgba(255, 77, 77, 0.12);
+    --danger-border: rgba(255, 77, 77, 0.35);
     --success: #4dff91;
     --success-dim: rgba(77, 255, 145, 0.1);
+    --success-border: rgba(77, 255, 145, 0.35);
     --warning: #f7c26e;
+    --overlay-scrim: rgba(0, 0, 0, 0.85);
+    --shadow-elevated: rgba(0, 0, 0, 0.6);
+    --surface-inset: rgba(0, 0, 0, 0.25);
+    --surface-subtle: rgba(255, 255, 255, 0.03);
+    --surface-subtle-strong: rgba(255, 255, 255, 0.06);
+    --surface-muted: rgba(255, 255, 255, 0.04);
+    --surface-muted-hover: rgba(255, 255, 255, 0.12);
+    --surface-input: rgba(0, 0, 0, 0.2);
+    --log-bg: #0a0a0a;
+    --fmt-tooltip-bg: #111111;
+    --chip-tint-alpha: 0.12;
+    --chip-border-alpha: 0.45;
+    --chip-quality-tint-alpha: 0.17;
+    --chip-quality-border-alpha: 0.55;
+    --chip-loading-bg: rgba(255, 211, 125, 0.12);
+    --chip-loading-text: #ffd37d;
+    --chip-loading-border: rgba(255, 211, 125, 0.35);
+    --chip-plain-bg: rgba(77, 255, 145, 0.12);
+    --chip-instrumental-bg: rgba(179, 128, 255, 0.13);
+    --chip-instrumental-text: #dfb3ff;
+    --chip-instrumental-border: rgba(179, 128, 255, 0.35);
+    --explicit-icon: #fecdd3;
+    --badge-neutral-bg: rgba(255, 255, 255, 0.08);
+    --badge-neutral-border: var(--border);
+    --badge-mp3-bg: rgba(255, 255, 255, 0.05);
+    --badge-mp3-border: rgba(255, 255, 255, 0.1);
+    --scrollbar-track: rgba(255, 255, 255, 0.05);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+    --art-empty-end: #222222;
     --sidebar-w: 385px;
     --radius: 10px;
     --radius-sm: 6px;
     --transition: 0.15s ease;
+}
+
+[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f3f3;
+    --surface: #ececec;
+    --card: #ffffff;
+    --card-hover: #f8f8f8;
+    --border: #d6d6d6;
+    --border-light: #e8e8e8;
+    --border-hover: #bdbdbd;
+    --accent: #6ee7f7;
+    --accent-dim: rgba(110, 231, 247, 0.28);
+    --accent-glow: rgba(110, 231, 247, 0.22);
+    --accent-border: rgba(110, 231, 247, 0.48);
+    --on-accent: #0d0d0d;
+    --text: #171717;
+    --text-secondary: #525252;
+    --text-muted: #737373;
+    --danger: #ff4d4d;
+    --danger-dim: rgba(255, 77, 77, 0.18);
+    --danger-border: rgba(255, 77, 77, 0.42);
+    --success: #4dff91;
+    --success-dim: rgba(77, 255, 145, 0.2);
+    --success-border: rgba(77, 255, 145, 0.42);
+    --warning: #f7c26e;
+    --overlay-scrim: rgba(0, 0, 0, 0.45);
+    --shadow-elevated: rgba(0, 0, 0, 0.14);
+    --surface-inset: rgba(0, 0, 0, 0.06);
+    --surface-subtle: rgba(0, 0, 0, 0.05);
+    --surface-subtle-strong: rgba(0, 0, 0, 0.08);
+    --surface-muted: rgba(0, 0, 0, 0.04);
+    --surface-muted-hover: rgba(0, 0, 0, 0.1);
+    --surface-input: rgba(0, 0, 0, 0.04);
+    --log-bg: var(--surface);
+    --fmt-tooltip-bg: var(--card);
+    --chip-tint-alpha: 0.26;
+    --chip-border-alpha: 0.52;
+    --chip-quality-tint-alpha: 0.3;
+    --chip-quality-border-alpha: 0.58;
+    --chip-loading-bg: rgba(255, 180, 60, 0.28);
+    --chip-loading-text: #b45309;
+    --chip-loading-border: rgba(255, 180, 60, 0.45);
+    --chip-plain-bg: rgba(77, 255, 145, 0.22);
+    --chip-instrumental-bg: rgba(179, 128, 255, 0.24);
+    --chip-instrumental-text: #7c3aed;
+    --chip-instrumental-border: rgba(124, 58, 237, 0.42);
+    --explicit-icon: #e11d48;
+    --badge-neutral-bg: rgba(0, 0, 0, 0.06);
+    --badge-neutral-border: rgba(0, 0, 0, 0.12);
+    --badge-mp3-bg: rgba(0, 0, 0, 0.05);
+    --badge-mp3-border: rgba(0, 0, 0, 0.1);
+    --scrollbar-track: rgba(0, 0, 0, 0.04);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+    --art-empty-end: #e0e0e0;
 }
 
 *,
@@ -74,7 +166,7 @@ textarea,
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #3a3a3a;
+    background: var(--border-hover);
 }
 
 /* ============================================================
@@ -150,7 +242,7 @@ textarea,
 .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: var(--overlay-scrim);
     backdrop-filter: blur(6px);
     display: flex;
     align-items: flex-start;
@@ -175,7 +267,7 @@ textarea,
     padding: 40px 36px;
     width: 100%;
     max-width: 460px;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 24px 80px var(--shadow-elevated);
     margin: auto;
 }
 
@@ -443,11 +535,11 @@ textarea,
 .donation-popover {
     position: fixed;
     width: 200px;
-    background: #0d0d0d;
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 12px;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 -8px 32px var(--shadow-elevated);
     z-index: 9999;
     animation: popoverFadeIn 0.15s ease-out;
     display: flex;
@@ -505,7 +597,7 @@ textarea,
     word-break: break-all;
     color: var(--text-muted);
     line-height: 1.3;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle);
     padding: 8px;
     border-radius: 6px;
     text-align: center;
@@ -872,11 +964,11 @@ select {
     max-height: 80vh;
     overflow-y: auto;
     overflow-x: hidden;
-    background: #111111;
+    background: var(--fmt-tooltip-bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px 14px;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 -4px 24px var(--shadow-elevated);
     font-size: 11px;
     color: var(--text-secondary);
     animation: tooltipFadeUp 0.12s ease;
@@ -909,17 +1001,17 @@ select {
 }
 
 .fmt-vars-scroll::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--scrollbar-track);
     border-radius: 3px;
 }
 
 .fmt-vars-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
 }
 
 .fmt-vars-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--scrollbar-thumb-hover);
 }
 
 .fmt-vars-table {
@@ -973,7 +1065,7 @@ select {
 
 .fmt-vars-table code:hover {
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
 }
 
 td.fmt-example {
@@ -1006,14 +1098,14 @@ td.fmt-example {
     width: 20px;
     height: 20px;
     flex-shrink: 0;
-    background: rgba(255,255,255,0.06);
+    background: var(--surface-subtle-strong);
     border-radius: 4px;
     cursor: help;
     transition: background var(--transition);
 }
 
 .fmt-template-badge:hover {
-    background: rgba(255,255,255,0.12);
+    background: var(--surface-muted-hover);
 }
 
 .fmt-template-badge img {
@@ -1034,7 +1126,7 @@ td.fmt-example {
     min-width: 0;
     font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
     font-size: 10px;
-    background: rgba(255,255,255,0.04);
+    background: var(--surface-muted);
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 3px 8px;
@@ -1098,7 +1190,7 @@ td.fmt-example {
 
 .fmt-builder-highlights {
     color: var(--text);
-    background: rgba(0,0,0,0.2);
+    background: var(--surface-input);
     border: 1px solid transparent;
     z-index: 1;
 }
@@ -1115,7 +1207,7 @@ td.fmt-example {
     flex-shrink: 0;
     width: 28px;
     height: 100%;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-subtle-strong);
     border: 1px solid var(--border);
     color: var(--text-muted);
     cursor: default;
@@ -1129,7 +1221,7 @@ td.fmt-example {
 
 .fmt-builder-apply.active {
     background: var(--accent);
-    color: #0d0d0d;
+    color: var(--on-accent);
     border-color: var(--accent);
     cursor: pointer;
 }
@@ -1152,7 +1244,7 @@ td.fmt-example {
 
 .fmt-preview-output.fmt-preview-placeholder {
     color: var(--text-muted);
-    background: rgba(255,255,255,0.02);
+    background: var(--surface-subtle);
     border: 1px dashed var(--border);
     font-style: italic;
 }
@@ -1160,14 +1252,14 @@ td.fmt-example {
 .fmt-preview-output:not(.fmt-preview-placeholder) {
     color: var(--success);
     background: var(--success-dim);
-    border: 1px solid rgba(77, 255, 145, 0.15);
+    border: 1px solid var(--success-border);
     font-style: normal;
 }
 
 .fmt-preview-output.fmt-preview-builder {
     color: var(--accent) !important;
     background: var(--accent-dim) !important;
-    border: 1px solid rgba(110, 231, 247, 0.15) !important;
+    border: 1px solid var(--accent-border) !important;
     font-style: normal !important;
 }
 
@@ -1192,7 +1284,7 @@ td.fmt-example {
 /* Global JS Tooltip */
 .global-tooltip {
     position: fixed;
-    z-index: 100000;
+    z-index: 2147483645;
     max-width: min(300px, calc(100vw - 20px));
     background: var(--card);
     border: 1px solid var(--border);
@@ -1659,7 +1751,7 @@ td.fmt-example {
     align-items: center;
     gap: 7px;
     background: var(--accent);
-    color: #0d0d0d;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-sm);
     font-family: inherit;
@@ -1719,7 +1811,7 @@ td.fmt-example {
 
 .btn-secondary:hover {
     background: var(--card-hover);
-    border-color: #3a3a3a;
+    border-color: var(--border-hover);
 }
 
 .btn-secondary.settings-check-updates-btn--ok,
@@ -1793,8 +1885,8 @@ td.fmt-example {
 .spinner {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(13, 13, 13, 0.3);
-    border-top-color: #0d0d0d;
+    border: 2px solid color-mix(in srgb, var(--text) 25%, transparent);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
     display: inline-block;
@@ -1823,7 +1915,7 @@ td.fmt-example {
    LOG CONSOLE
    ============================================================ */
 .log-container {
-    background: #0a0a0a;
+    background: var(--log-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
@@ -1915,7 +2007,7 @@ td.fmt-example {
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--surface-inset);
 }
 
 .dl-history-segment-btn {
@@ -1949,7 +2041,7 @@ td.fmt-example {
 
 .dl-history-segment-btn--all.is-active {
     background: var(--accent);
-    color: var(--bg);
+    color: var(--on-accent);
 }
 
 .dl-history-segment-btn--errors {
@@ -2088,7 +2180,7 @@ td.fmt-example {
 }
 
 .track-status-art--empty {
-    background: linear-gradient(145deg, var(--card) 0%, #222 100%);
+    background: linear-gradient(145deg, var(--card) 0%, var(--art-empty-end) 100%);
 }
 
 .track-status-art-img {
@@ -2493,7 +2585,7 @@ td.fmt-example {
 .confidence-chip-wrap:hover .track-status-chip.confidence-chip,
 .confidence-chip-wrap:focus-visible .track-status-chip.confidence-chip {
     background: var(--accent) !important;
-    color: #0a0a0a !important;
+    color: var(--on-accent) !important;
     border-color: var(--accent) !important;
 }
 
@@ -2504,19 +2596,19 @@ td.fmt-example {
     padding: 2px 5px;
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    background: rgba(255,255,255,0.03);
+    background: var(--surface-subtle);
     font-weight: 600;
 }
 
 .track-status-chip.done {
     color: var(--success);
-    border-color: rgba(77, 255, 145, 0.35);
+    border-color: var(--success-border);
     background: var(--success-dim);
 }
 
 .track-status-chip.failed {
     color: var(--danger);
-    border-color: rgba(255, 77, 77, 0.35);
+    border-color: var(--danger-border);
     background: var(--danger-dim);
 }
 
@@ -2562,20 +2654,20 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .track-status-chip.synced {
     color: var(--accent);
-    border-color: rgba(110, 231, 247, 0.35);
+    border-color: var(--accent-border);
     background: var(--accent-dim);
 }
 
 .track-status-chip.plain {
     color: var(--success);
-    border-color: rgba(77, 255, 145, 0.35);
-    background: rgba(77, 255, 145, 0.12);
+    border-color: var(--success-border);
+    background: var(--chip-plain-bg);
 }
 
 .track-status-chip.instrumental {
-    color: #dfb3ff;
-    border-color: rgba(179, 128, 255, 0.35);
-    background: rgba(179, 128, 255, 0.13);
+    color: var(--chip-instrumental-text);
+    border-color: var(--chip-instrumental-border);
+    background: var(--chip-instrumental-bg);
 }
 
 .track-status-chip.none {
@@ -2584,14 +2676,14 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .track-status-chip.error {
     color: var(--danger);
-    border-color: rgba(255, 77, 77, 0.35);
+    border-color: var(--danger-border);
     background: var(--danger-dim);
 }
 
 .track-status-chip.loading {
-    color: #ffd37d;
-    border-color: rgba(255, 211, 125, 0.35);
-    background: rgba(255, 211, 125, 0.12);
+    color: var(--chip-loading-text);
+    border-color: var(--chip-loading-border);
+    background: var(--chip-loading-bg);
 }
 
 /* ============================================================
@@ -2631,7 +2723,7 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .btn-search:not(:disabled) {
     background: var(--accent) !important;
-    color: #000 !important;
+    color: var(--on-accent) !important;
     cursor: pointer;
 }
 
@@ -2828,7 +2920,7 @@ a.track-dl-btn.purchase-only:focus-visible {
     width: 30px;
     height: 30px;
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
@@ -2861,7 +2953,7 @@ a.track-dl-btn.purchase-only:focus-visible {
 .result-add-btn.added,
 .result-add-btn--queued {
     background: var(--success);
-    color: #000;
+    color: var(--on-accent);
 }
 
 /* Queued: checkmark swaps to X on hover/focus (click removes from queue) */
@@ -3009,7 +3101,7 @@ a.track-dl-btn.purchase-only:focus-visible {
     border: none;
     background: none;
     border-radius: 0;
-    color: #fecdd3;
+    color: var(--explicit-icon);
 }
 
 .explicit-tag-badge .explicit-badge-icon,
@@ -3083,18 +3175,23 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .badge-lossless {
     background: transparent;
+    color: #f0f0f0;
+}
+
+.badge-lossless .quality-icon path {
+    fill: currentColor;
 }
 
 .badge-mp3 {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--badge-mp3-bg);
     color: var(--text-muted);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--badge-mp3-border);
 }
 
 .badge-neutral {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--badge-neutral-bg);
     color: var(--text-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--badge-neutral-border);
 }
 
 .sidebar-search {
@@ -3198,7 +3295,7 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .btn-accent {
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
     border: none;
     border-radius: var(--radius-sm);
     padding: 0 14px;
@@ -3472,8 +3569,8 @@ a.track-dl-btn.purchase-only:focus-visible {
     letter-spacing: 0.03em;
     padding: 3px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(110, 231, 247, 0.5);
-    background: rgba(110, 231, 247, 0.14);
+    border: 1px solid var(--accent-border);
+    background: var(--accent-dim);
     color: var(--accent);
     white-space: nowrap;
     line-height: 1.2;
@@ -3526,6 +3623,22 @@ a.track-dl-btn.purchase-only:focus-visible {
 .badge-label {
     background: rgba(251, 146, 60, 0.15);
     color: #fb923c;
+}
+
+[data-theme="light"] .badge-track {
+    background: rgba(167, 139, 250, 0.26);
+}
+
+[data-theme="light"] .badge-artist {
+    background: rgba(251, 191, 36, 0.26);
+}
+
+[data-theme="light"] .badge-playlist {
+    background: rgba(52, 211, 153, 0.24);
+}
+
+[data-theme="light"] .badge-label {
+    background: rgba(251, 146, 60, 0.24);
 }
 
 .queue-card-remove {
@@ -3784,7 +3897,78 @@ a.track-dl-btn.purchase-only:focus-visible {
 .sidebar-icon-btn:hover {
     color: var(--text);
     background: var(--card);
-    border-color: #3a3a3a;
+    border-color: var(--border-hover);
+}
+
+.sidebar-theme-switch {
+    position: relative;
+    width: 46px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+        background var(--transition),
+        border-color var(--transition);
+}
+
+.sidebar-theme-switch:hover {
+    background: var(--card);
+    border-color: var(--border-hover);
+}
+
+.sidebar-theme-switch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.sidebar-theme-switch-icons {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 5px;
+    pointer-events: none;
+}
+
+.sidebar-theme-switch-icon {
+    width: 11px;
+    height: 11px;
+    color: var(--text-muted);
+    transition: color var(--transition);
+}
+
+.sidebar-theme-switch:not(.sidebar-theme-switch--light)
+    .sidebar-theme-switch-icon--moon {
+    color: var(--accent);
+}
+
+.sidebar-theme-switch--light .sidebar-theme-switch-icon--sun {
+    color: var(--accent);
+}
+
+.sidebar-theme-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-elevated) 65%, transparent);
+    transition:
+        transform var(--transition),
+        background var(--transition),
+        border-color var(--transition);
+}
+
+.sidebar-theme-switch--light .sidebar-theme-switch-thumb {
+    transform: translateX(18px);
 }
 
 .sidebar-icon-btn:focus-visible {
@@ -3801,9 +3985,9 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .report-issue-btn:hover,
 .report-issue-btn.active {
-    color: var(--danger);
-    border-color: rgba(255, 77, 77, 0.7);
-    background: rgba(255, 77, 77, 0.12);
+    color: var(--on-accent);
+    border-color: var(--danger);
+    background: var(--danger);
 }
 
 .report-issue-btn:focus-visible {
@@ -4008,7 +4192,7 @@ a.track-dl-btn.purchase-only:focus-visible {
 
 .issue-report-log-preview-btn.issue-report-icon-btn:hover {
     background: var(--card-hover);
-    border-color: #3a3a3a;
+    border-color: var(--border-hover);
     color: var(--text);
 }
 
@@ -5316,7 +5500,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 }
 
 .lyric-search-kind--muted {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle);
     color: var(--text-muted);
     border: 1px solid var(--border);
 }
@@ -5491,6 +5675,401 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 .track-status-chip.lyrics-chip.error:not(.loading):hover,
 .track-status-chip.lyrics-chip.error:not(.loading):focus-visible {
     background: var(--danger) !important;
-    color: #0a0a0a !important;
+    color: var(--on-accent) !important;
     border-color: var(--danger) !important;
 }
+
+/* ============================================================
+   LIGHT MODE — inverted tag fills (solid default, tint hover)
+   ============================================================ */
+[data-theme="light"] .fmt-vars-table code {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid var(--accent);
+}
+
+[data-theme="light"] .fmt-vars-table code:hover {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+
+[data-theme="light"] .fmt-builder-highlights .var {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .fmt-preview-output.fmt-preview-builder {
+    background: var(--accent) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--accent) !important;
+}
+
+[data-theme="light"] .track-status-chip.synced,
+[data-theme="light"] .track-status-chip.lyrics-chip.synced:not(.loading) {
+    background: var(--accent) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--accent) !important;
+}
+
+[data-theme="light"] .track-status-chip.synced:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.synced:not(.loading):hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.synced:not(.loading):focus-visible {
+    background: var(--accent-dim) !important;
+    color: var(--accent) !important;
+    border-color: var(--accent-border) !important;
+}
+
+[data-theme="light"] .track-status-chip.plain,
+[data-theme="light"] .track-status-chip.lyrics-chip.plain:not(.loading) {
+    background: var(--success) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--success) !important;
+}
+
+[data-theme="light"] .track-status-chip.plain:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.plain:not(.loading):hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.plain:not(.loading):focus-visible {
+    background: var(--chip-plain-bg) !important;
+    color: var(--success) !important;
+    border-color: var(--success-border) !important;
+}
+
+[data-theme="light"] .track-status-chip.instrumental,
+[data-theme="light"] .track-status-chip.lyrics-chip.instrumental:not(.loading) {
+    background: rgb(179, 128, 255) !important;
+    color: var(--on-accent) !important;
+    border-color: rgb(179, 128, 255) !important;
+}
+
+[data-theme="light"] .track-status-chip.instrumental:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.instrumental:not(.loading):hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.instrumental:not(.loading):focus-visible {
+    background: var(--chip-instrumental-bg) !important;
+    color: var(--chip-instrumental-text) !important;
+    border-color: var(--chip-instrumental-border) !important;
+}
+
+[data-theme="light"] .track-status-chip.error,
+[data-theme="light"] .track-status-chip.failed,
+[data-theme="light"] .track-status-chip.lyrics-chip.none:not(.loading),
+[data-theme="light"] .track-status-chip.lyrics-chip.error:not(.loading) {
+    background: var(--danger) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--danger) !important;
+}
+
+[data-theme="light"] .track-status-chip.error:hover,
+[data-theme="light"] .track-status-chip.failed:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.none:not(.loading):hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.error:not(.loading):hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.none:not(.loading):focus-visible,
+[data-theme="light"] .track-status-chip.lyrics-chip.error:not(.loading):focus-visible {
+    background: var(--danger-dim) !important;
+    color: var(--danger) !important;
+    border-color: var(--danger-border) !important;
+}
+
+[data-theme="light"] .track-status-chip.done {
+    background: var(--success) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--success) !important;
+}
+
+[data-theme="light"] .track-status-chip.done:hover {
+    background: var(--success-dim) !important;
+    color: var(--success) !important;
+    border-color: var(--success-border) !important;
+}
+
+[data-theme="light"] .track-status-chip.loading,
+[data-theme="light"] .track-status-chip.lyrics-chip.loading {
+    background: var(--warning) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--warning) !important;
+}
+
+[data-theme="light"] .track-status-chip.loading:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.loading:hover,
+[data-theme="light"] .track-status-chip.lyrics-chip.loading:focus-visible {
+    background: var(--chip-loading-bg) !important;
+    color: var(--chip-loading-text) !important;
+    border-color: var(--chip-loading-border) !important;
+}
+
+[data-theme="light"] .confidence-chip-wrap .track-status-chip.confidence-chip {
+    background: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    color: var(--on-accent) !important;
+    border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+}
+
+[data-theme="light"] .confidence-chip-wrap:hover .track-status-chip.confidence-chip,
+[data-theme="light"] .confidence-chip-wrap:focus-visible .track-status-chip.confidence-chip {
+    background: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-tint-alpha)) !important;
+    color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-border-alpha)) !important;
+}
+
+[data-theme="light"] .queue-card-quality {
+    background: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    color: var(--on-accent) !important;
+    border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    transition:
+        background var(--transition),
+        color var(--transition),
+        border-color var(--transition);
+}
+
+[data-theme="light"] .queue-card-quality:hover {
+    background: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-quality-tint-alpha)) !important;
+    color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-quality-border-alpha)) !important;
+}
+
+/* Light mode — surfaces, chrome, and template preview */
+[data-theme="light"] .sidebar-icon-btn {
+    background: var(--card);
+}
+
+[data-theme="light"] .sidebar-icon-btn:hover {
+    background: var(--surface);
+}
+
+[data-theme="light"] .sidebar-theme-switch {
+    background: var(--card);
+}
+
+[data-theme="light"] .sidebar-theme-switch:hover {
+    background: var(--card);
+}
+
+[data-theme="light"] .sidebar-theme-switch-thumb {
+    background: var(--surface);
+    border-color: var(--border-hover);
+}
+
+[data-theme="light"] .sidebar-theme-switch--light .sidebar-theme-switch-icon--sun {
+    color: var(--text);
+}
+
+[data-theme="light"] .btn-mode {
+    background: var(--card);
+}
+
+[data-theme="light"] .btn-mode:hover:not(.active) {
+    background: var(--surface);
+}
+
+[data-theme="light"] .queue-card {
+    background: var(--surface);
+}
+
+[data-theme="light"] .queue-card:hover {
+    background: var(--card-hover);
+}
+
+[data-theme="light"] .queue-card-badge.badge-album {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .queue-card-badge.badge-track {
+    background: #a78bfa;
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .queue-card-badge.badge-artist {
+    background: #fbbf24;
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .queue-card-badge.badge-playlist {
+    background: #34d399;
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .queue-card-badge.badge-label {
+    background: #fb923c;
+    color: var(--on-accent);
+}
+
+[data-theme="light"] .track-status-card {
+    background: var(--card);
+}
+
+[data-theme="light"] .dl-history-segment-btn:not(.is-active) {
+    background: var(--card);
+}
+
+[data-theme="light"] .dl-history-segment-btn--all:hover:not(.is-active) {
+    background: var(--accent-dim);
+}
+
+[data-theme="light"] .dl-history-segment-btn--errors:hover:not(.is-active) {
+    background: var(--danger-dim);
+}
+
+[data-theme="light"] .fmt-preview-output:not(.fmt-preview-placeholder):not(.fmt-preview-builder) {
+    background: var(--success) !important;
+    color: var(--on-accent) !important;
+    border-color: var(--success) !important;
+}
+
+[data-theme="light"] .badge-lossless {
+    color: var(--text);
+}
+
+/* Light mode — feedback hover, resolution buttons, queue errors, toggles */
+[data-theme="light"] .track-missing-placeholder-btn:not(.track-resolution-active),
+[data-theme="light"] .track-substitute-search-btn:not(.track-resolution-active) {
+    border-color: var(--on-accent);
+    color: var(--on-accent);
+    background: var(--card);
+}
+
+[data-theme="light"] .track-missing-placeholder-btn:not(.track-resolution-active):hover:not(:disabled),
+[data-theme="light"] .track-substitute-search-btn:not(.track-resolution-active):hover:not(:disabled) {
+    background: var(--on-accent);
+    color: var(--card);
+    border-color: var(--on-accent);
+}
+
+[data-theme="light"] .queue-card.dl-error {
+    background: rgba(255, 77, 77, 0.16);
+    border-color: var(--danger);
+}
+
+[data-theme="light"] .queue-card.dl-error:hover {
+    background: rgba(255, 77, 77, 0.22);
+}
+
+[data-theme="light"] .queue-card.dl-error .dl-error-badge {
+    background: var(--danger);
+    color: #ffffff;
+    border-color: var(--danger);
+}
+
+[data-theme="light"] .issue-report-open-count {
+    color: var(--text);
+}
+
+[data-theme="light"] .report-issue-btn:hover,
+[data-theme="light"] .report-issue-btn.active {
+    background: var(--danger);
+    color: #ffffff;
+    border-color: var(--border);
+}
+
+[data-theme="light"] .settings-gear-btn.active,
+[data-theme="light"] .lucky-toggle-btn[aria-expanded="true"] {
+    color: var(--accent);
+    border-color: var(--border);
+    background: var(--card);
+}
+
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--ok,
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--ok:hover,
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--ok:disabled {
+    background: var(--success);
+    color: var(--text);
+    border-color: var(--success);
+}
+
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--err,
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--err:hover,
+[data-theme="light"] .btn-secondary.settings-check-updates-btn--err:disabled {
+    background: var(--danger);
+    color: var(--text);
+    border-color: var(--danger);
+}
+
+[data-theme="light"] .issue-report-logs-modal-panel {
+    background: var(--surface);
+}
+
+[data-theme="light"] .issue-report-logs-modal-head,
+[data-theme="light"] .issue-report-logs-modal-footer {
+    background: var(--surface);
+}
+
+[data-theme="light"] .issue-report-logs-modal-body {
+    background: var(--card);
+    color: var(--text);
+}
+
+[data-theme="light"] .lyric-search-kind--synced {
+    background: var(--accent);
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+[data-theme="light"] .lyric-search-kind--synced:hover,
+[data-theme="light"] .lyric-search-kind--synced:focus-visible {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+
+[data-theme="light"] .lyric-search-kind--plain {
+    background: var(--success);
+    color: var(--text);
+    border-color: var(--success);
+}
+
+[data-theme="light"] .lyric-search-kind--plain:hover,
+[data-theme="light"] .lyric-search-kind--plain:focus-visible {
+    background: var(--chip-plain-bg);
+    color: var(--success);
+    border-color: var(--success-border);
+}
+
+[data-theme="light"] .lyric-search-kind--instrumental {
+    background: rgb(179, 128, 255);
+    color: var(--text);
+    border-color: rgb(179, 128, 255);
+}
+
+[data-theme="light"] .lyric-search-kind--instrumental:hover,
+[data-theme="light"] .lyric-search-kind--instrumental:focus-visible {
+    background: var(--chip-instrumental-bg);
+    color: var(--chip-instrumental-text);
+    border-color: var(--chip-instrumental-border);
+}
+
+[data-theme="light"] .lyric-search-kind--muted {
+    background: var(--border-hover);
+    color: var(--text);
+    border-color: var(--border-hover);
+}
+
+[data-theme="light"] .lyric-search-kind--muted:hover,
+[data-theme="light"] .lyric-search-kind--muted:focus-visible {
+    background: var(--danger-dim);
+    color: var(--danger);
+    border-color: var(--danger-border);
+}
+
+[data-theme="light"] .toggle-knob {
+    background: var(--border-hover);
+}
+
+[data-theme="light"] .toggle-switch input:checked + .toggle-knob {
+    background: var(--accent);
+}
+
+[data-theme="light"] .toggle-knob::after {
+    background: var(--text-muted);
+}
+
+[data-theme="light"] .toggle-switch input:checked + .toggle-knob::after {
+    background: #ffffff;
+}
+
+[data-theme="light"] .lyric-output-switch input:checked + .toggle-knob {
+    background: var(--accent);
+}
+
+[data-theme="light"] .lyric-output-switch input:checked + .toggle-knob::after {
+    background: #ffffff;
+}
+
