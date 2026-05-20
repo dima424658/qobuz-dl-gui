@@ -123,8 +123,8 @@
           continue;
         }
         if (!want.has(idx)) {
-          card.remove();
-          cardMap.delete(k);
+          if (card.isConnected) card.remove();
+          continue;
         }
       }
 

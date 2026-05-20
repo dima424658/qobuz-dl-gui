@@ -29,6 +29,46 @@
       return dbItemByKey;
     }
 
+    function cardHasResolvedRealAudio(card, snap) {
+      const ap = String(
+        (card && card.dataset.audioPath) ||
+          (snap && snap.audio_path) ||
+          "",
+      ).trim();
+      if (!ap || ap.startsWith(GUI_PENDING)) return false;
+      if (ap.toLowerCase().endsWith(".missing.txt")) return false;
+      return true;
+    }
+
+    function lyricFieldsFromCard(card, existing) {
+      const out = {
+        lyric_type: String((existing && existing.lyric_type) || ""),
+        lyric_provider: String((existing && existing.lyric_provider) || ""),
+        lyric_confidence: String((existing && existing.lyric_confidence) || ""),
+        lyric_destination: deps.normalizeLyricDestination(
+          (existing && existing.lyric_destination) || "",
+        ),
+      };
+      if (!card) return out;
+      const chip = card.querySelector(".lyrics-chip");
+      if (chip) {
+        const parts = (chip.className || "").split(/\s+/);
+        const lt = parts.find((c) =>
+          ["synced", "plain", "none", "error", "instrumental"].includes(c),
+        );
+        if (lt) out.lyric_type = lt;
+        out.lyric_destination = deps.normalizeLyricDestination(
+          chip.dataset.lyricDestination || "",
+        );
+      }
+      const confChip = card.querySelector(".confidence-chip");
+      if (confChip) {
+        const m = String(confChip.textContent || "").match(/(\d+)/);
+        if (m) out.lyric_confidence = m[1];
+      }
+      return out;
+    }
+
     function registerAudioPathAlbum(audioPath, lyricAlbum) {
       const p = String(audioPath || "").trim();
       if (!p) return;
@@ -229,10 +269,16 @@
       const tk = (card && card.dataset.trackKey) || "";
       if (!tk) return;
       const tEl = card.querySelector(".track-status-title");
+      const existing = dbItemByKey.get(tk) || {};
       const st = String(ev.status || "").toLowerCase();
       const isFailed = st === "failed";
       const isPurchase = st === "purchase_only";
       const detail = String(ev.detail || "").trim();
+      const resolvedKeep =
+        (isPurchase || isFailed) &&
+        cardHasResolvedRealAudio(card, existing) &&
+        String(existing.download_status || "").toLowerCase() === "downloaded";
+      const lyricSnap = lyricFieldsFromCard(card, existing);
       const it = {
         track_no: String(ev.track_no || ""),
         title: (tEl && tEl.textContent) || String(ev.title || ""),
@@ -240,38 +286,37 @@
         cover_url: resolveCoverUrl(card, tk),
         lyric_artist: (card.dataset.lyricArtist || "").trim(),
         duration_sec: parseInt(card.dataset.durationSec || "0", 10) || 0,
-        audio_path: (card.dataset.audioPath || "").trim(),
+        audio_path: resolvedKeep
+          ? String(existing.audio_path || card.dataset.audioPath || "").trim()
+          : (card.dataset.audioPath || "").trim(),
         track_explicit:
           card.dataset.trackExplicit === "1"
             ? true
             : card.dataset.trackExplicit === "0"
               ? false
               : null,
-        download_status: isPurchase
-          ? "purchase_only"
-          : isFailed
-            ? "failed"
-            : "downloaded",
-        download_detail: detail,
+        download_status: resolvedKeep
+          ? "downloaded"
+          : isPurchase
+            ? "purchase_only"
+            : isFailed
+              ? "failed"
+              : "downloaded",
+        download_detail: resolvedKeep
+          ? String(existing.download_detail || "")
+          : detail,
         slot_track_id: String(ev.slot_track_id || "").trim(),
         release_album_id: String(ev.release_album_id || "").trim(),
-        lyric_type: "",
-        lyric_provider: "",
-        lyric_confidence: "",
-        lyric_destination: "",
-        attach_search_eligible: card.dataset.attachSearchEligible === "1",
+        lyric_type: lyricSnap.lyric_type,
+        lyric_provider: lyricSnap.lyric_provider,
+        lyric_confidence: lyricSnap.lyric_confidence,
+        lyric_destination: lyricSnap.lyric_destination,
+        attach_search_eligible: resolvedKeep
+          ? existing.attach_search_eligible === true ||
+            existing.attach_search_eligible === 1 ||
+            card.dataset.attachSearchEligible === "1"
+          : card.dataset.attachSearchEligible === "1",
       };
-      const chip = card.querySelector(".lyrics-chip");
-      if (chip) {
-        const parts = (chip.className || "").split(/\s+/);
-        const lt = parts.find((c) =>
-          ["synced", "plain", "none", "error", "instrumental"].includes(c),
-        );
-        if (lt) it.lyric_type = lt;
-        it.lyric_destination = deps.normalizeLyricDestination(
-          chip.dataset.lyricDestination || "",
-        );
-      }
       dbItemByKey.set(tk, it);
       const apStore = (card.dataset.audioPath || "").trim();
       if (apStore && !apStore.startsWith(GUI_PENDING)) {
@@ -378,6 +423,9 @@
       ) {
         return;
       }
+      const tk = (preCard.dataset.trackKey || "").trim();
+      const existing = tk ? dbItemByKey.get(tk) : null;
+      if (cardHasResolvedRealAudio(preCard, existing)) return;
       const tEl = preCard.querySelector(".track-status-title");
       const coverUrl = resolveCoverUrl(preCard, preCard.dataset.trackKey || "");
       const payload = {

@@ -662,7 +662,27 @@ Commit: pending
 
 ### Notes
 
-- Download runtime / SSE (**D1**) remains in **`app.js`**.
+- Download runtime / SSE (**D1**) remains in **`app.js`** (D1A façade only; see Checkpoint D1A).
+
+## Checkpoint D1A — Download façade (`downloadController.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/downloadController.js`: **`QobuzGui.features.download`** with **`install(impl)`** plus safe no-op forwards (`init`, `startSSE`, `handleStatusEvent`, `startFromCurrentQueue`, `pause`, `isDownloading`, `qUrlForPurchaseSlot`). **`pause()`** returns **`Promise.resolve(null)`** when uninstalled or API missing.
+- **`app.js`**: **`_dl()`** helper; guarded **`features.download.install({...})`** at end of **`initDownload()`** forwarding to current inline closures (unchanged behavior).
+- **`index.html`**: **`downloadController.js`** after **`queueController.js`**, before **`queueInternals.js`**; **`app.js?v=91`**.
+
+### Validation
+
+- `node --check` on **`downloadController.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **D1A intentionally does not migrate any callers yet.** `startSSE()`, `window._handleDlStatus`, `window._qUrlForPurchaseSlot`, and the download button handler remain owned by **`app.js`** until D1B–D1F. Only the plug socket exists.
+- Next: **D1B** progress/button state; then D1C purchase-only queue issues; D1D SSE handler; D1E start/pause click flow; D1F EventSource ownership.
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -671,8 +691,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals (`queueInternals.js`), history H1–H6 (...), replacements R1–R3 (`features/replacements/`), lyrics L1 (preview player) + L2 (search modal)
-Next: download runtime / SSE façade (D1)
+Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket)
+Next: download D1B (progress/button state), then D1C–D1F
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -692,6 +712,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~75%+):** History H1–H6, **replacements R1–R3**, and **lyrics L1–L2** are landed. **`app.js`** remains a compatibility shell for download/SSE, setup/auth, and settings. Next controlled step: **D1** (download runtime / SSE façade).
+**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A** (façade) are landed. **`app.js`** still owns download/SSE runtime until D1B–D1F. Next controlled step: **D1B** (progress/button state).
 
 

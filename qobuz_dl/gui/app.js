@@ -28,6 +28,18 @@
     return QG.features.history;
   }
 
+  function _cardHasResolvedRealAudio(card) {
+    if (!card) return false;
+    const ap = (card.dataset.audioPath || "").trim();
+    if (!ap || ap.startsWith(_GUI_PENDING_AUDIO_PREFIX)) return false;
+    if (ap.toLowerCase().endsWith(".missing.txt")) return false;
+    return true;
+  }
+
+  function _dl() {
+    return QG.features.download;
+  }
+
   function _getHistoryDbMap() {
     return _historyStoreHost
       ? _historyStoreHost.getDbItemByKey()
@@ -1077,15 +1089,17 @@
               coverUrl,
             );
           }
+          if (!_cardHasResolvedRealAudio(_tcard)) {
+            _hist().setDownloadChip(
+              trackNo,
+              title,
+              "downloading",
+              "",
+              undefined,
+              evAlb,
+            );
+          }
         }
-        _hist().setDownloadChip(
-          trackNo,
-          title,
-          "downloading",
-          "",
-          undefined,
-          evAlb,
-        );
         _updateProgress();
         _hist().applyFilter();
       } else if (ev.type === "track_download_progress") {
@@ -1134,14 +1148,24 @@
         if (preCard && ridTrim) {
           preCard.dataset.releaseAlbumId = ridTrim;
         }
-        if (preCard && sidTrim && ridTrim && (isPurchase || isFailed)) {
+        const skipTerminalDowngrade =
+          preCard &&
+          (isPurchase || isFailed) &&
+          _cardHasResolvedRealAudio(preCard);
+        if (
+          preCard &&
+          sidTrim &&
+          ridTrim &&
+          (isPurchase || isFailed) &&
+          !skipTerminalDowngrade
+        ) {
           preCard.dataset.attachSearchEligible = "1";
         }
-        if (preCard && ap) {
+        if (preCard && ap && !skipTerminalDowngrade) {
           preCard.dataset.audioPath = ap;
           _tsRegisterAudioPathAlbum(ap, resAlb);
         }
-        if (isPurchase && detail) {
+        if (isPurchase && detail && !skipTerminalDowngrade) {
           _hist().setDownloadChip(
             ev.track_no,
             ev.title,
@@ -1155,7 +1179,7 @@
             },
             resAlb,
           );
-        } else {
+        } else if (!skipTerminalDowngrade) {
           _hist().setDownloadChip(
             ev.track_no,
             ev.title,
@@ -1164,6 +1188,23 @@
             undefined,
             resAlb,
           );
+        } else {
+          _hist().setDownloadChip(
+            ev.track_no,
+            ev.title,
+            "downloaded",
+            "done",
+            undefined,
+            resAlb,
+          );
+          if (preCard.dataset.resolvedBy === "search") {
+            preCard.dataset.attachSearchEligible = "1";
+          } else if (preCard.dataset.resolvedBy === "placeholder") {
+            preCard.dataset.attachSearchEligible = "1";
+          }
+          if (_replacementResolutionHost) {
+            _replacementResolutionHost.syncResolutionButtonStates(preCard);
+          }
         }
         if (st === "downloaded" && preCard) {
           if (ev.substitute_attach === true) {
@@ -1185,7 +1226,15 @@
               _replacementResolutionHost.syncResolutionButtonStates(preCard);
             }
           } else {
-            delete preCard.dataset.attachSearchEligible;
+            const rb = (preCard.dataset.resolvedBy || "").trim();
+            if (rb === "search" || rb === "placeholder") {
+              preCard.dataset.attachSearchEligible = "1";
+              if (_replacementResolutionHost) {
+                _replacementResolutionHost.syncResolutionButtonStates(preCard);
+              }
+            } else {
+              delete preCard.dataset.attachSearchEligible;
+            }
           }
         }
         if (st === "downloaded" && ap) {
@@ -1196,7 +1245,8 @@
           preCard &&
           sidTrim &&
           ridTrim &&
-          ((isPurchase && detail) || isFailed)
+          ((isPurchase && detail) || isFailed) &&
+          !skipTerminalDowngrade
         ) {
           if (_historyStoreHost) {
             _historyStoreHost.persistPendingSlotDownloadHistory(
@@ -1597,6 +1647,41 @@
       handleDropText: window._handleDropText,
       updateBadge: window._updateQueueBadge,
     });
+    if (
+      QG.features &&
+      QG.features.download &&
+      typeof QG.features.download.install === "function"
+    ) {
+      QG.features.download.install({
+        init(_deps) {
+          /* noop for D1A; real bindings come in D1E */
+        },
+        startSSE,
+        handleStatusEvent(ev) {
+          if (typeof window._handleDlStatus === "function") {
+            window._handleDlStatus(ev);
+          }
+        },
+        startFromCurrentQueue() {
+          /* dl-btn start path — stays inline until D1E */
+        },
+        pause() {
+          const dlApi = api && api.downloadApi;
+          if (dlApi && typeof dlApi.pause === "function") {
+            return dlApi.pause();
+          }
+          return Promise.resolve(null);
+        },
+        isDownloading() {
+          return !!window.isDownloading;
+        },
+        qUrlForPurchaseSlot(slotId) {
+          return typeof window._qUrlForPurchaseSlot === "function"
+            ? window._qUrlForPurchaseSlot(slotId) || ""
+            : "";
+        },
+      });
+    }
   }
 
   // ── Settings tab ──────────────────────────────────────────
