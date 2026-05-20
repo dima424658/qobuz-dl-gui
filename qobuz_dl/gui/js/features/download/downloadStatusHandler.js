@@ -61,14 +61,17 @@
           ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
             ? String(ev.lyric_album).trim()
             : "";
+        const sidTrim = String(ev.slot_track_id || "").trim();
         const tcard = hist?.ensureTrackCard(
           trackNo,
           title,
           true,
           coverUrl,
           evAlb,
+          sidTrim,
         );
         if (tcard) {
+          if (sidTrim) tcard.dataset.slotTrackId = sidTrim;
           if (ev.lyric_artist != null && String(ev.lyric_artist).trim() !== "") {
             tcard.dataset.lyricArtist = String(ev.lyric_artist).trim();
           }
@@ -175,7 +178,7 @@
           hist?.setDownloadChip(
             ev.track_no,
             ev.title,
-            isFailed ? "failed" : "downloaded",
+            isFailed ? detail || "Download failed" : "downloaded",
             isFailed ? "failed" : "done",
             undefined,
             resAlb,

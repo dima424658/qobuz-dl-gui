@@ -98,7 +98,7 @@ class LyricsTests(unittest.TestCase):
 
     def test_instrumental_placeholder_lrc(self):
         s = lyrics.instrumental_placeholder_lrc()
-        self.assertTrue(lyrics._is_synced_lrc(s))
+        self.assertFalse(lyrics._is_synced_lrc(s))
         self.assertEqual(lyrics._lyrics_type(s), "instrumental")
 
     def test_lrclib_compact_row_duration_delta_ui_threshold(self):
@@ -687,6 +687,75 @@ class LyricsTests(unittest.TestCase):
         self.assertIsNotNone(out)
         self.assertEqual((out or {}).get("lyrics_type"), "synced")
         self.assertIn("line one here", (out or {}).get("lyrics", ""))
+
+    def test_lrclib_record_lyrics_body_bracket_sections_are_plain(self):
+        rec = {
+            "syncedLyrics": "[Verse]\nLine one\n[Chorus]\nLine two",
+            "plainLyrics": "Line one\nLine two",
+        }
+        body = lyrics._lrclib_record_lyrics_body(rec)
+        self.assertEqual(body, "Line one\nLine two")
+        self.assertEqual(lyrics._lyrics_type(body), "plain")
+
+    def test_compact_row_kind_plain_when_synced_field_has_brackets_only(self):
+        rec = {
+            "id": 42,
+            "duration": 200,
+            "trackName": "Song",
+            "artistName": "Artist",
+            "albumName": "Album",
+            "syncedLyrics": "[Intro]\nHello beautiful world today",
+            "plainLyrics": "Hello beautiful world today",
+        }
+        row = lyrics._compact_lrclib_search_row(rec, 200, "Song", "Artist", "Album")
+        self.assertIsNotNone(row)
+        self.assertEqual(row.get("kind"), "plain")
+
+    def test_inline_timestamp_only_is_plain_not_synced(self):
+        """A single inline ``[0:10]`` must not mark the whole row as synced."""
+        synced_field = (
+            "[Intro]\n"
+            "Yeah [0:10]\n"
+            "Line two here\n"
+            "[Verse]\n"
+            "More lyrics for the song today"
+        )
+        rec = {
+            "id": 99,
+            "duration": 307,
+            "trackName": "Make Them Cry",
+            "artistName": "Drake",
+            "albumName": "ICEMAN",
+            "syncedLyrics": synced_field,
+            "plainLyrics": "Yeah\nLine two here\nMore lyrics for the song today",
+        }
+        body = lyrics._lrclib_record_lyrics_body(rec)
+        self.assertEqual(lyrics._lyrics_type(body), "plain")
+        row = lyrics._compact_lrclib_search_row(
+            rec, 307, "Make Them Cry", "Drake", "ICEMAN"
+        )
+        self.assertIsNotNone(row)
+        self.assertEqual(row.get("kind"), "plain")
+
+    def test_proper_lrc_line_start_timestamps_are_synced(self):
+        synced_field = (
+            "[00:05.90]First line\n"
+            "[00:07.55]Second line\n"
+            "[00:11.55]Third line\n"
+        )
+        rec = {
+            "id": 100,
+            "duration": 200,
+            "trackName": "Dust",
+            "artistName": "Drake",
+            "albumName": "ICEMAN",
+            "syncedLyrics": synced_field,
+            "plainLyrics": "",
+        }
+        self.assertTrue(lyrics._is_synced_lrc(synced_field))
+        row = lyrics._compact_lrclib_search_row(rec, 200, "Dust", "Drake", "ICEMAN")
+        self.assertEqual(row.get("kind"), "synced")
+
 
 if __name__ == "__main__":
     unittest.main()

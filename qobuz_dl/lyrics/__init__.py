@@ -14,6 +14,9 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 _TIMESTAMP_RE = re.compile(r"\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]")
+_LRC_LINE_TIMESTAMP_RE = re.compile(
+    r"^\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]",
+)
 _LRC_TS_CAPTURE = re.compile(
     r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]",
 )
@@ -272,8 +275,37 @@ def _duration_score(want_sec: int, got_sec: int) -> float:
     return 0.25
 
 
+def _lrc_timestamp_line_count(text: str) -> int:
+    """Count lines that begin with an LRC timestamp (not inline ``word [0:10]``)."""
+    count = 0
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        t = line.strip()
+        if t and _LRC_LINE_TIMESTAMP_RE.match(t):
+            count += 1
+    return count
+
+
 def _is_synced_lrc(lyrics: str) -> bool:
-    return bool(_TIMESTAMP_RE.search(lyrics or ""))
+    # Real synced LRC has multiple timestamp-prefixed lines; a lone inline
+    # ``[0:10]`` or section tag line ``[Verse]`` must not qualify.
+    return _lrc_timestamp_line_count(lyrics) >= 2
+
+
+def _lrclib_record_lyrics_body(rec: dict) -> str:
+    """Pick lyric text from an LRCLIB row, ignoring mislabeled ``syncedLyrics``.
+
+    LRCLIB sometimes stores plain section tags like ``[Verse]`` in ``syncedLyrics``
+    without timestamp lines. Treat those as plain text, not synced.
+    """
+    if not isinstance(rec, dict):
+        return ""
+    synced = (rec.get("syncedLyrics") or "").strip()
+    plain = (rec.get("plainLyrics") or "").strip()
+    if synced and _is_synced_lrc(synced):
+        return synced
+    if plain:
+        return plain
+    return synced
 
 
 def _looks_latin_enough(lyrics_text: str, min_ratio: float = 0.70) -> bool:
@@ -309,7 +341,7 @@ def _lyrics_looks_like_garbage(text: str) -> bool:
 
 
 def _min_synced_lines(text: str) -> int:
-    return len(_TIMESTAMP_RE.findall(text or ""))
+    return _lrc_timestamp_line_count(text)
 
 
 def _lrc_last_end_seconds(lyrics_text: str) -> float:
@@ -523,7 +555,7 @@ def _lrclib_get(track: Dict, timeout_sec: float) -> Optional[Tuple[Dict, float]]
     _lrc_telapsed(t_http, "HTTP GET /api/get", "status=200")
     # LRCLIB sometimes marks instrumental=true while still returning lyric text,
     # or returns a duration-matched wrong row | never trust instrumental alone.
-    lyrics_early = (data.get("syncedLyrics") or data.get("plainLyrics") or "").strip()
+    lyrics_early = _lrclib_record_lyrics_body(data)
     if data.get("instrumental") and lyrics_early and not _lyrics_looks_like_garbage(
         lyrics_early
     ):
@@ -570,10 +602,12 @@ def _lrclib_get(track: Dict, timeout_sec: float) -> Optional[Tuple[Dict, float]]
             return None
         data = dict(data)
         data["instrumental"] = False
-    lyrics_text = data.get("syncedLyrics") or data.get("plainLyrics") or ""
+    lyrics_text = _lrclib_record_lyrics_body(data)
     if not lyrics_text or _lyrics_looks_like_garbage(lyrics_text):
         return None
-    if _is_synced_lrc(lyrics_text) and _min_synced_lines(lyrics_text) < 2:
+    if _lrc_timestamp_line_count(lyrics_text) == 1 and not _is_instrumentalish_lyrics(
+        lyrics_text
+    ):
         return None
     if _synced_lrc_exceeds_track_duration(lyrics_text, duration):
         return None
@@ -916,7 +950,7 @@ def _lrclib_search_best(
             if sim < 0.45:
                 continue
 
-            lyrics_text = (r.get("syncedLyrics") or r.get("plainLyrics") or "").strip()
+            lyrics_text = _lrclib_record_lyrics_body(r).strip()
             inst = bool(r.get("instrumental"))
             if inst and (not lyrics_text or _lyrics_looks_like_garbage(lyrics_text)):
                 if sim >= 0.88 and dur >= 0.85:
@@ -946,7 +980,9 @@ def _lrclib_search_best(
 
             if not lyrics_text or _lyrics_looks_like_garbage(lyrics_text):
                 continue
-            if _is_synced_lrc(lyrics_text) and _min_synced_lines(lyrics_text) < 2:
+            if _lrc_timestamp_line_count(lyrics_text) == 1 and not _is_instrumentalish_lyrics(
+                lyrics_text
+            ):
                 continue
             if _synced_lrc_exceeds_track_duration(lyrics_text, duration):
                 continue
@@ -1264,7 +1300,7 @@ def fetch_synced_lyrics_with_search_fallback(
         ),
     )
     for try_idx, (row, rec) in enumerate(ranked[: int(max_fallback_candidates)], start=1):
-        body = ((rec.get("syncedLyrics") or "").strip() or (rec.get("plainLyrics") or "").strip())
+        body = _lrclib_record_lyrics_body(rec).strip()
         if not body or _lyrics_looks_like_garbage(body):
             continue
         got_explicit = lyrics_text_indicates_explicit(body)
@@ -1317,9 +1353,7 @@ def fetch_synced_lyrics_with_search_fallback(
     ) -> Optional[Dict[str, object]]:
         if not data:
             return None
-        synced = (data.get("syncedLyrics") or "").strip()
-        plain = (data.get("plainLyrics") or "").strip()
-        body = synced or plain
+        body = _lrclib_record_lyrics_body(data).strip()
         if not body or _lyrics_looks_like_garbage(body):
             return None
         got_explicit = lyrics_text_indicates_explicit(body)
@@ -1469,18 +1503,15 @@ def _compact_lrclib_search_row(
     delta_sec = None
     if ref > 0 and dur > 0 and abs(dur - ref) > LRCLIB_UI_DURATION_DELTA_SEC:
         delta_sec = int(dur - ref)
-    synced = (rec.get("syncedLyrics") or "").strip()
-    plain = (rec.get("plainLyrics") or "").strip()
+    body = _lrclib_record_lyrics_body(rec)
     inst = bool(rec.get("instrumental"))
-    if synced:
-        kind = "synced"
-    elif plain:
-        kind = "plain"
+    if body:
+        kind = _lyrics_type(body)
     elif inst:
         kind = "instrumental"
     else:
         kind = "none"
-    scan_text = f"{synced}\n{plain}".strip()
+    scan_text = body
     lyrics_explicit = lyrics_text_indicates_explicit(scan_text) if scan_text else False
     got_t = (rec.get("trackName") or "") or ""
     got_ar = (rec.get("artistName") or "") or ""
@@ -1496,7 +1527,7 @@ def _compact_lrclib_search_row(
     # title/artist+duration; this avoids misleading 100% rows on wrong albums.
     sim = (0.65 * sim) + (0.35 * album_part)
     dur_part = _duration_score(ref, dur)
-    is_synced = bool(synced)
+    is_synced = _is_synced_lrc(body)
     st_track = {
         "title": got_t or _normalize_piece(want_title),
         "album": {"title": (rec.get("albumName") or "") or _normalize_piece(want_album)},
@@ -1606,9 +1637,7 @@ def attach_lrclib_id_to_audio(
     data = lrclib_get_by_id(record_id, timeout_sec=timeout_sec)
     if not data:
         return None, False, False, False
-    synced = (data.get("syncedLyrics") or "").strip()
-    plain = (data.get("plainLyrics") or "").strip()
-    body = synced or plain
+    body = _lrclib_record_lyrics_body(data)
     if not body:
         if bool(data.get("instrumental")):
             body = instrumental_placeholder_lrc()

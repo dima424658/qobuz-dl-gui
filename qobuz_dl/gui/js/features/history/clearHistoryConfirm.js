@@ -78,10 +78,15 @@
         deps && typeof deps.onConfirmClear === "function"
           ? deps.onConfirmClear
           : null;
+      const dismissConfidenceTooltips =
+        deps && typeof deps.dismissConfidenceTooltips === "function"
+          ? deps.dismissConfidenceTooltips
+          : null;
 
       if (clearTrackStatusBtn && clearHistoryConfirm) {
         clearTrackStatusBtn.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (dismissConfidenceTooltips) dismissConfidenceTooltips();
           if (!clearHistoryConfirm.classList.contains("hidden")) {
             closeClearHistoryConfirm();
             return;
@@ -93,6 +98,7 @@
         closeClearHistoryConfirm();
       });
       clearHistoryDo?.addEventListener("click", async () => {
+        if (dismissConfidenceTooltips) dismissConfidenceTooltips();
         closeClearHistoryConfirm();
         if (onConfirmClear) await onConfirmClear();
       });

@@ -103,6 +103,7 @@
       createNew = false,
       coverUrl,
       lyricAlbum,
+      slotTrackId,
     ) {
       const list = document.getElementById("dl-track-status");
       if (!list) return null;
@@ -111,12 +112,27 @@
         lyricAlbum != null && String(lyricAlbum).trim() !== ""
           ? String(lyricAlbum).trim()
           : "";
-      const key = trackKey(parsed.trackNo, parsed.title, alb);
+      const sid =
+        slotTrackId != null && String(slotTrackId).trim() !== ""
+          ? String(slotTrackId).trim()
+          : "";
       const cardMap = getCardMap();
+      if (sid) {
+        for (const existing of cardMap.values()) {
+          if ((existing.dataset.slotTrackId || "").trim() === sid) {
+            if (coverUrl) setTrackCardCover(existing, coverUrl);
+            if (alb) existing.dataset.lyricAlbum = alb;
+            existing.dataset.slotTrackId = sid;
+            return existing;
+          }
+        }
+      }
+      const key = trackKey(parsed.trackNo, parsed.title, alb);
       if (key && cardMap.has(key)) {
         const existing = cardMap.get(key);
         if (coverUrl) setTrackCardCover(existing, coverUrl);
         if (alb) existing.dataset.lyricAlbum = alb;
+        if (sid) existing.dataset.slotTrackId = sid;
         return existing;
       }
       if (!createNew && !key) return null;
@@ -127,6 +143,7 @@
         lyricAlbum,
         coverUrl,
       );
+      if (sid) card.dataset.slotTrackId = sid;
       const stickToBottom = scrollContainerAtBottom(list);
       const parent = appendParent(list);
       parent.appendChild(card);
@@ -331,12 +348,13 @@
         }
       } else if (cls === "failed") {
         el.classList.add("track-dl-btn--failed");
-        el.setAttribute(
-          "aria-label",
-          statusText === "failed"
-            ? "Download failed"
-            : String(statusText || "Failed"),
-        );
+        const failMsg = String(statusText || "").trim();
+        const tip =
+          failMsg && failMsg.toLowerCase() !== "failed"
+            ? failMsg
+            : "Download failed";
+        el.setAttribute("data-tip", tip);
+        el.setAttribute("aria-label", tip);
         el.innerHTML = TRACK_DL_FAIL_SVG;
       } else {
         el.classList.add("track-dl-btn--active");
@@ -401,7 +419,12 @@
       const t = Number(total);
       const r = Number(received);
       if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(r)) return;
-      const pct = Math.max(0, Math.min(100, Math.round((r / t) * 100)));
+      const rawPct = Math.max(0, Math.min(100, Math.round((r / t) * 100)));
+      const prevPct = parseInt(card.dataset.dlProgressPct || "0", 10);
+      const pct =
+        Number.isFinite(prevPct) && prevPct > 0
+          ? Math.max(prevPct, rawPct)
+          : rawPct;
       card.dataset.dlProgressPct = String(pct);
       const fill = btn.querySelector(".track-dl-btn-fill");
       if (fill) {
@@ -444,10 +467,22 @@
     function positionConfidenceTooltip(wrap, tip) {
       if (!wrap || !tip || !tip.classList.contains("confidence-chip-tooltip--open"))
         return;
+      if (!wrap.isConnected) {
+        hideConfidenceTooltip(wrap, tip);
+        return;
+      }
       if (tip.parentNode !== document.body) document.body.appendChild(tip);
       tip.classList.add("confidence-chip-tooltip--fixed");
       requestAnimationFrame(() => {
+        if (!wrap.isConnected) {
+          hideConfidenceTooltip(wrap, tip);
+          return;
+        }
         const r = wrap.getBoundingClientRect();
+        if (r.width <= 0 && r.height <= 0) {
+          hideConfidenceTooltip(wrap, tip);
+          return;
+        }
         const tw = tip.offsetWidth;
         const th = tip.offsetHeight;
         const pad = 8;
@@ -467,7 +502,28 @@
       tip.classList.remove("confidence-chip-tooltip--fixed");
       tip.style.left = "";
       tip.style.top = "";
-      if (tip.parentNode === document.body && wrap) wrap.appendChild(tip);
+      if (wrap && wrap.isConnected && tip.parentNode === document.body) {
+        wrap.appendChild(tip);
+      }
+    }
+
+    function dismissAllConfidenceTooltips() {
+      document.querySelectorAll(".confidence-chip-wrap").forEach((wrap) => {
+        if (typeof wrap._confidenceTooltipTeardown === "function") {
+          wrap._confidenceTooltipTeardown();
+          return;
+        }
+        const tip = wrap.querySelector(".confidence-chip-tooltip");
+        if (tip) hideConfidenceTooltip(wrap, tip);
+      });
+      document
+        .querySelectorAll(".confidence-chip-tooltip.confidence-chip-tooltip--open")
+        .forEach((tip) => {
+          tip.classList.remove("confidence-chip-tooltip--open");
+          tip.classList.remove("confidence-chip-tooltip--fixed");
+          tip.style.left = "";
+          tip.style.top = "";
+        });
     }
 
     function bindConfidenceTooltipUi(wrap, tip) {
@@ -713,6 +769,7 @@
       normalizeLyricDestination,
       lyricDestinationFromOutputs,
       lyricDestinationLabel,
+      dismissAllConfidenceTooltips,
     };
   }
 

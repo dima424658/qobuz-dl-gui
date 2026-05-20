@@ -130,6 +130,10 @@ class GuiQueueHandler(logging.Handler):
                         "true",
                         "True",
                     )
+                if len(parts) >= 8:
+                    slot_id = parts[7].strip()
+                    if slot_id:
+                        ev_data["slot_track_id"] = slot_id
             self.hub.emit_event(ev_data)
             self.hub.emit_log_line(f"  \u2193 {track_no}. {title}".strip())
             return

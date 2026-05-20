@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import concurrent.futures
+import shutil
 import subprocess
 import threading
 import time
@@ -10,6 +11,7 @@ from typing import Optional, Tuple
 
 import requests
 import urllib3
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from pathvalidate import sanitize_filename, sanitize_filepath
 from tqdm import tqdm
 
@@ -223,6 +225,7 @@ def _emit_track_start(
     album: str = "",
     duration_sec: int = 0,
     track_explicit: bool = False,
+    slot_track_id: str = "",
 ) -> None:
     num = (
         f"{int(track_num):02d}"
@@ -235,7 +238,13 @@ def _emit_track_start(
     al = _safe_marker_value(album)
     d = int(duration_sec or 0)
     e = 1 if track_explicit else 0
-    logger.info(f"[TRACK_START] {num}|{title_s}|{cov}|{a}|{al}|{d}|{e}")
+    sid = _safe_marker_value(slot_track_id) if str(slot_track_id or "").strip() else ""
+    if sid:
+        logger.info(
+            f"[TRACK_START] {num}|{title_s}|{cov}|{a}|{al}|{d}|{e}|{sid}"
+        )
+    else:
+        logger.info(f"[TRACK_START] {num}|{title_s}|{cov}|{a}|{al}|{d}|{e}")
 
 
 def _album_title_for_track_marker(
@@ -859,6 +868,7 @@ class Download:
             album=alb,
             duration_sec=dura,
             track_explicit=tr_ex,
+            slot_track_id=sid_slot,
         )
         is_mp3 = int(self.quality) == 5
         try:
@@ -1395,7 +1405,8 @@ class Download:
             )
         else:
             formatted_path = sanitize_filename(self.track_format.format(**filename_attr))
-        final_file = os.path.join(root_dir, formatted_path)[:250] + extension
+        base_final_stem = os.path.join(root_dir, formatted_path)[:250]
+        final_file = base_final_stem + extension
 
         if os.path.isfile(final_file):
             logger.info(f"{OFF}{track_title} was already downloaded")
@@ -1475,48 +1486,52 @@ class Download:
                 max_fallback_candidates=5,
             )
 
-        def get_fresh_url(quality_override=None):
-            fmt = quality_override or self.quality
+        def track_dict_getter(quality_override, force_segments=False):
+            fmt = quality_override
             tid_for_url = stream_track_id or track_metadata.get("id")
-            try:
-                res = self.client.get_track_url(tid_for_url, fmt_id=fmt)
-                new_url = res.get("url")
-                if new_url:
-                    return new_url
-                logger.warning("get_track_url returned no URL, using initial")
-                return initial_url
-            except Exception as exc:
-                logger.warning(f"get_track_url failed ({exc}), using initial URL")
-                return initial_url
+            return self.client.get_track_url(
+                tid_for_url, fmt_id=fmt, force_segments=force_segments
+            )
 
         try:
             # Try at requested quality first; on failure, try lower qualities
             qualities_to_try = _quality_fallback_chain(int(self.quality))
             download_ok = False
+            tag_mp3 = is_mp3
+            progress_cb = _make_throttled_download_progress(
+                track_metadata,
+                tmp_count,
+                track_title,
+                is_track=is_track,
+                album_or_track_metadata=album_or_track_metadata,
+            )
             for q in qualities_to_try:
-                url_fn = (lambda qual: lambda: get_fresh_url(qual))(q)
+                attempt_mp3 = int(q) == 5
+                attempt_final = base_final_stem + (".mp3" if attempt_mp3 else extension)
+                getter = (
+                    lambda qual: lambda force_segments=False: track_dict_getter(
+                        qual, force_segments=force_segments
+                    )
+                )(q)
                 try:
                     if q != int(self.quality):
                         logger.info(
                             f"{YELLOW}Retrying {track_title} at quality {q} "
                             f"(original: {self.quality})..."
                         )
-                    tqdm_download(
-                        url_fn,
+                    _download_track_with_fallback(
+                        getter,
                         filename,
                         filename,
+                        is_mp3=attempt_mp3,
                         cancel_event=self._stream_abort_evt(),
-                        segmented_fallback=self.segmented_fallback and not is_mp3,
-                        remux_flac=not is_mp3,
-                        progress_callback=_make_throttled_download_progress(
-                            track_metadata,
-                            tmp_count,
-                            track_title,
-                            is_track=is_track,
-                            album_or_track_metadata=album_or_track_metadata,
-                        ),
+                        use_range_segmented_fallback=self.segmented_fallback,
+                        remux_flac=not attempt_mp3,
+                        progress_callback=progress_cb,
                     )
                     download_ok = True
+                    final_file = attempt_final
+                    tag_mp3 = attempt_mp3
                     break
                 except ConnectionError as e:
                     logger.warning(
@@ -1543,7 +1558,8 @@ class Download:
                 if self.tag_album_from_folder_format
                 else None
             )
-            tag_function = metadata.tag_mp3 if is_mp3 else metadata.tag_flac
+            tag_function = metadata.tag_mp3 if tag_mp3 else metadata.tag_flac
+            tag_error = None
             try:
                 tag_function(
                     filename,
@@ -1558,7 +1574,43 @@ class Download:
                     tag_display_album=tag_display_album,
                 )
             except Exception as e:
+                tag_error = str(e)
                 logger.error(f"{RED}Error tagging the file: {e}", exc_info=True)
+
+            if tag_error or not os.path.isfile(final_file):
+                fail_detail = tag_error or "Download file missing after save"
+                if os.path.isfile(filename):
+                    try:
+                        os.remove(filename)
+                    except OSError:
+                        pass
+                _emit_track_marker(
+                    "TRACK_RESULT",
+                    track_metadata.get("track_number", tmp_count),
+                    track_title,
+                    "failed",
+                    fail_detail,
+                    queue_url=self.source_queue_url,
+                    lyric_album=_album_title_for_track_marker(
+                        is_track, track_metadata, album_or_track_metadata
+                    ),
+                    slot_track_id=str(track_metadata.get("id") or ""),
+                    album_release_id="" if is_track else str(self.item_id),
+                )
+                if self.lyrics_any_enabled:
+                    try:
+                        fail_title = _get_title(lyrics_track_meta or track_metadata)
+                    except Exception:
+                        fail_title = track_title
+                    _emit_lyrics_marker(
+                        track_metadata.get("track_number"),
+                        fail_title,
+                        "error",
+                        fail_detail[:120],
+                        0,
+                        final_file,
+                    )
+                return
 
             _emit_track_marker(
                 "TRACK_RESULT",
@@ -1598,6 +1650,39 @@ class Download:
                     lyrics_fetch_future=lyrics_fut,
                     lyrics_fetch_started_at=_t_lrc_start,
                     lyrics_track_meta=lyrics_track_meta,
+                )
+        except ConnectionError as e:
+            fail_detail = str(e)
+            if os.path.isfile(filename):
+                try:
+                    os.remove(filename)
+                except OSError:
+                    pass
+            _emit_track_marker(
+                "TRACK_RESULT",
+                track_metadata.get("track_number", tmp_count),
+                track_title,
+                "failed",
+                fail_detail,
+                queue_url=self.source_queue_url,
+                lyric_album=_album_title_for_track_marker(
+                    is_track, track_metadata, album_or_track_metadata
+                ),
+                slot_track_id=str(track_metadata.get("id") or ""),
+                album_release_id="" if is_track else str(self.item_id),
+            )
+            if self.lyrics_any_enabled:
+                try:
+                    fail_title = _get_title(lyrics_track_meta or track_metadata)
+                except Exception:
+                    fail_title = track_title
+                _emit_lyrics_marker(
+                    track_metadata.get("track_number"),
+                    fail_title,
+                    "error",
+                    fail_detail[:120],
+                    0,
+                    final_file,
                 )
         finally:
             if lyrics_ex is not None:
@@ -1695,15 +1780,28 @@ class Download:
     ):
         if not self.lyrics_any_enabled:
             return
-        # Finish lyrics for this file even if the user cancelled the queue: the
-        # track is already saved, so skipping here would leave .lrc missing when
-        # "Synced Lyrics" is enabled.
-        if not os.path.isfile(final_file):
-            return
         try:
             lyrics_ui_title = _get_title(track_metadata)
         except Exception:
             lyrics_ui_title = str((track_metadata or {}).get("title") or "track")
+        # Finish lyrics for this file even if the user cancelled the queue: the
+        # track is already saved, so skipping here would leave .lrc missing when
+        # "Synced Lyrics" is enabled.
+        if not os.path.isfile(final_file):
+            logger.warning(
+                "%sLyrics sidecar skipped (audio missing): %s",
+                YELLOW,
+                final_file,
+            )
+            _emit_lyrics_marker(
+                track_metadata.get("track_number"),
+                lyrics_ui_title,
+                "error",
+                "download-failed",
+                0,
+                final_file,
+            )
+            return
 
         result = None
         if lyrics_fetch_future is None:
@@ -2124,6 +2222,284 @@ def _quality_fallback_chain(quality):
     except ValueError:
         idx = 0
     return all_qualities[idx:]
+
+
+def _ffmpeg_on_path() -> bool:
+    return bool(shutil.which("ffmpeg"))
+
+
+def _get_qobuz_segment_uuid(segment_data):
+    pos = 0
+    while pos + 24 <= len(segment_data):
+        size = int.from_bytes(segment_data[pos : pos + 4], "big")
+        if size <= 0 or pos + size > len(segment_data):
+            break
+        if bytes(segment_data[pos + 4 : pos + 8]) == b"uuid":
+            return bytes(segment_data[pos + 8 : pos + 24])
+        pos += size
+    return None
+
+
+def _decrypt_qobuz_segment(segment_data, raw_key, segment_uuid):
+    if segment_uuid is None:
+        return bytes(segment_data)
+
+    buf = bytearray(segment_data)
+    pos = 0
+    while pos + 8 <= len(buf):
+        size = int.from_bytes(buf[pos : pos + 4], "big")
+        if size <= 0 or pos + size > len(buf):
+            break
+
+        if (
+            bytes(buf[pos + 4 : pos + 8]) == b"uuid"
+            and bytes(buf[pos + 8 : pos + 24]) == segment_uuid
+        ):
+            pointer = pos + 28
+            data_end = pos + int.from_bytes(buf[pointer : pointer + 4], "big")
+            pointer += 4
+            counter_len = buf[pointer]
+            pointer += 1
+            frame_count = int.from_bytes(buf[pointer : pointer + 3], "big")
+            pointer += 3
+
+            for _ in range(frame_count):
+                frame_len = int.from_bytes(buf[pointer : pointer + 4], "big")
+                pointer += 6
+                flags = int.from_bytes(buf[pointer : pointer + 2], "big")
+                pointer += 2
+                frame_start, data_end = data_end, data_end + frame_len
+
+                if flags:
+                    counter = bytes(buf[pointer : pointer + counter_len]) + (
+                        b"\x00" * (16 - counter_len)
+                    )
+                    decryptor = Cipher(
+                        algorithms.AES(raw_key), modes.CTR(counter)
+                    ).decryptor()
+                    buf[frame_start:data_end] = (
+                        decryptor.update(bytes(buf[frame_start:data_end]))
+                        + decryptor.finalize()
+                    )
+                pointer += counter_len
+        pos += size
+    return bytes(buf)
+
+
+def _tqdm_download_qobuz_segments(
+    track_url_dict,
+    fname,
+    desc,
+    *,
+    cancel_event=None,
+    progress_callback=None,
+    max_workers=8,
+):
+    """Native Qobuz segmented import download (Akamai-safe for large FLAC)."""
+    if cancel_event and cancel_event.is_set():
+        raise ConnectionAbortedError("Segmented download cancelled.")
+
+    tmp_fname = fname + ".mp4"
+    n_segments = int(track_url_dict["n_segments"])
+    url_template = track_url_dict["url_template"]
+    raw_key = track_url_dict["raw_key"]
+
+    def _get_seg_size(seg_num):
+        if cancel_event and cancel_event.is_set():
+            return 0
+        url = url_template.replace("$SEGMENT$", str(seg_num))
+        try:
+            r = requests.head(url, timeout=15)
+            return int(r.headers.get("content-length", 0))
+        except Exception:
+            return 0
+
+    total_size = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures_size = [ex.submit(_get_seg_size, i) for i in range(n_segments + 1)]
+        for fut in concurrent.futures.as_completed(futures_size):
+            if cancel_event and cancel_event.is_set():
+                raise ConnectionAbortedError("Segmented download cancelled.")
+            total_size += fut.result()
+
+    completed_bytes = 0
+
+    def _fetch_segment(seg_num, bar=None):
+        nonlocal completed_bytes
+        if cancel_event and cancel_event.is_set():
+            raise ConnectionAbortedError("Segmented download cancelled.")
+        url = url_template.replace("$SEGMENT$", str(seg_num))
+        r = requests.get(url, stream=True, timeout=(15, 120))
+        r.raise_for_status()
+        seg_data = bytearray()
+        for chunk in r.iter_content(chunk_size=65536):
+            if cancel_event and cancel_event.is_set():
+                raise ConnectionAbortedError("Segmented download cancelled.")
+            if not chunk:
+                continue
+            seg_data.extend(chunk)
+            completed_bytes += len(chunk)
+            if bar is not None:
+                bar.update(len(chunk))
+            if progress_callback and total_size > 0:
+                progress_callback(min(completed_bytes, total_size), total_size)
+        return seg_data
+
+    try:
+        with open(tmp_fname, "wb") as file, tqdm(
+            total=total_size or None,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=desc,
+            bar_format=CYAN + "{n_fmt}/{total_fmt} /// {desc}",
+        ) as bar:
+            segment_uuid = None
+            for i in range(2):
+                seg_data = _fetch_segment(i, bar)
+                if i == 1:
+                    segment_uuid = _get_qobuz_segment_uuid(seg_data)
+                    if segment_uuid is None:
+                        raise ConnectionError(
+                            f"Cannot find segment UUID for {fname}"
+                        )
+                file.write(_decrypt_qobuz_segment(seg_data, raw_key, segment_uuid))
+
+            if n_segments >= 2:
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=max_workers
+                ) as executor:
+                    futures_seg = [
+                        executor.submit(_fetch_segment, i, bar)
+                        for i in range(2, n_segments + 1)
+                    ]
+                    for fut in futures_seg:
+                        if cancel_event and cancel_event.is_set():
+                            raise ConnectionAbortedError(
+                                "Segmented download cancelled."
+                            )
+                        seg_data = fut.result()
+                        file.write(
+                            _decrypt_qobuz_segment(
+                                seg_data, raw_key, segment_uuid
+                            )
+                        )
+
+        if cancel_event and cancel_event.is_set():
+            raise ConnectionAbortedError("Segmented download cancelled.")
+
+        logger.info(f"{GREEN}  Remuxing segmented stream to FLAC...{OFF}")
+        try:
+            remux = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-nostdin",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-i",
+                    tmp_fname,
+                    "-c:a",
+                    "copy",
+                    "-f",
+                    "flac",
+                    fname,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise ConnectionError(
+                "ffmpeg is required for segmented hi-res FLAC downloads "
+                "(install ffmpeg and add it to PATH)"
+            ) from exc
+        if remux.returncode != 0:
+            err = (remux.stderr or "").strip()
+            raise ConnectionError(
+                f"FFmpeg remux failed for {fname}"
+                + (f": {err}" if err else "")
+            )
+    finally:
+        if os.path.isfile(tmp_fname):
+            try:
+                os.remove(tmp_fname)
+            except OSError:
+                pass
+
+
+def _download_track_with_fallback(
+    track_dict_getter,
+    filename,
+    desc,
+    *,
+    is_mp3=False,
+    cancel_event=None,
+    use_range_segmented_fallback=True,
+    remux_flac=True,
+    progress_callback=None,
+):
+    """Direct CDN URL first; on failure use Qobuz native segmented import."""
+    if cancel_event and cancel_event.is_set():
+        raise ConnectionAbortedError("Download cancelled.")
+
+    track_dict = track_dict_getter(force_segments=False)
+
+    if is_mp3:
+        url = track_dict.get("url")
+        if not url:
+            raise ConnectionError("No MP3 stream URL from Qobuz")
+        tqdm_download(
+            lambda: url,
+            filename,
+            desc,
+            cancel_event=cancel_event,
+            segmented_fallback=False,
+            remux_flac=False,
+            progress_callback=progress_callback,
+        )
+        return
+
+    if "url" in track_dict:
+        direct_url = track_dict["url"]
+        try:
+            tqdm_download(
+                lambda: direct_url,
+                filename,
+                desc,
+                cancel_event=cancel_event,
+                segmented_fallback=use_range_segmented_fallback,
+                remux_flac=remux_flac,
+                progress_callback=progress_callback,
+            )
+            return
+        except Exception:
+            if cancel_event and cancel_event.is_set():
+                raise ConnectionAbortedError("Download cancelled.")
+            logger.info(
+                "%sDirect download failed; activating Qobuz segmented download...%s",
+                YELLOW,
+                OFF,
+            )
+
+    track_dict = track_dict_getter(force_segments=True)
+    if "url_template" in track_dict:
+        if not _ffmpeg_on_path():
+            raise ConnectionError(
+                "ffmpeg is required for segmented hi-res FLAC downloads "
+                "(install ffmpeg and add it to PATH, or allow quality fallback to MP3)"
+            )
+        _tqdm_download_qobuz_segments(
+            track_dict,
+            filename,
+            desc,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+        )
+        return
+
+    raise ConnectionError("No valid download format returned by Qobuz")
 
 
 def _dl_streaming(url, fname, desc, headers, cancel_event=None, progress_callback=None):

@@ -227,6 +227,7 @@
     createNew = false,
     coverUrl,
     lyricAlbum,
+    slotTrackId,
   ) {
     return _historyCardHost
       ? _historyCardHost.ensureTrackStatusCard(
@@ -235,6 +236,7 @@
           createNew,
           coverUrl,
           lyricAlbum,
+          slotTrackId,
         )
       : null;
   }
@@ -324,6 +326,9 @@
 
   async function _resetTrackStatusCards() {
     _lyricSearch().close();
+    if (_historyCardHost?.dismissAllConfidenceTooltips) {
+      _historyCardHost.dismissAllConfidenceTooltips();
+    }
     const list = document.getElementById("dl-track-status");
     if (_historyStoreHost) {
       await _historyStoreHost.clearServerAndLocal(list);
@@ -713,6 +718,11 @@
       _historyClearConfirmHost =
         QG.features.history.internals.bootstrapClearHistoryConfirm({
           onConfirmClear: _resetTrackStatusCards,
+          dismissConfidenceTooltips: () => {
+            if (_historyCardHost?.dismissAllConfidenceTooltips) {
+              _historyCardHost.dismissAllConfidenceTooltips();
+            }
+          },
         });
     }
 

@@ -233,8 +233,13 @@ class DownloaderFeatureTests(unittest.TestCase):
             with open(final_file, "wb") as f:
                 f.write(b"audio")
 
+        def fake_download(_getter, filename, _desc, **_kwargs):
+            with open(filename, "wb") as f:
+                f.write(b"fake-audio")
+
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "qobuz_dl.downloader.tqdm_download"
+            "qobuz_dl.downloader._download_track_with_fallback",
+            side_effect=fake_download,
         ), patch("qobuz_dl.downloader.metadata.tag_flac", side_effect=fake_tag), patch.object(
             d, "_write_track_lyrics_sidecar"
         ) as m_write:
@@ -275,6 +280,56 @@ class DownloaderFeatureTests(unittest.TestCase):
 
         self.assertEqual(pending, [])
         self.assertTrue(future.done())
+
+    def test_tag_failure_emits_failed_track_result(self):
+        from unittest.mock import MagicMock
+
+        markers = []
+        track = {
+            "id": 123,
+            "title": "Track Name",
+            "track_number": 1,
+            "performer": {"name": "Artist"},
+            "duration": 180,
+        }
+        album = {
+            "id": 999,
+            "title": "Album Name",
+            "artist": {"name": "Artist"},
+        }
+        client = MagicMock()
+        d = Download(client, "999", tempfile.gettempdir(), 6, lyrics_enabled=False)
+
+        def capture_marker(marker, track_num, title, status, detail="", **kwargs):
+            markers.append((marker, status, detail))
+
+        def fake_download(_getter, filename, _desc, **_kwargs):
+            with open(filename, "wb") as f:
+                f.write(b"not-flac")
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "qobuz_dl.downloader._download_track_with_fallback",
+            side_effect=fake_download,
+        ), patch(
+            "qobuz_dl.downloader.metadata.tag_flac",
+            side_effect=Exception("FLACNoHeaderError"),
+        ), patch(
+            "qobuz_dl.downloader._emit_track_marker", side_effect=capture_marker
+        ):
+            d._download_and_tag(
+                tmp,
+                1,
+                {"url": "https://example.invalid/audio.flac"},
+                track,
+                album,
+                False,
+                False,
+            )
+
+        results = [m for m in markers if m[0] == "TRACK_RESULT"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][1], "failed")
+        self.assertIn("FLACNoHeaderError", results[0][2])
 
 
 if __name__ == "__main__":

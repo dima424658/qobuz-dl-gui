@@ -228,5 +228,10 @@
     },
     true,
   );
+
+  ui.globalTooltip.dismiss = function dismissGlobalTooltip() {
+    tooltip.classList.remove("visible");
+    activeTarget = null;
+  };
   };
 })();

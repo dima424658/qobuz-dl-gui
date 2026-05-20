@@ -30,6 +30,30 @@ class GuiEventHubTests(unittest.TestCase):
         self.assertIn('"substitute_attach": true', got)
         stream.close()
 
+    def test_track_start_marker_emits_slot_track_id(self):
+        hub = GuiEventHub()
+        handler = GuiQueueHandler(hub)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="[TRACK_START] 18|Who Did That To You?|https://cover|GERONIMO|Django|245|0|slot-abc",
+            args=(),
+            exc_info=None,
+        )
+
+        stream = hub.stream()
+        self.assertEqual(next(stream), "data: \n\n")
+        handler.emit(record)
+        got = next(stream)
+        self.assertIn("event: status", got)
+        self.assertIn('"type": "track_start"', got)
+        self.assertIn('"slot_track_id": "slot-abc"', got)
+        stream.close()
+
     def test_error_record_calls_error_callback_and_session_log_is_clean(self):
         hub = GuiEventHub()
         calls = []

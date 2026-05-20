@@ -5898,6 +5898,11 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
     background: var(--card);
 }
 
+/* In-progress download icon: black glyph on faint teal shell (done/failed unchanged) */
+[data-theme="light"] .track-dl-btn.download-chip.track-dl-btn--active {
+    color: #0a0a0a;
+}
+
 [data-theme="light"] .dl-history-segment-btn:not(.is-active) {
     background: var(--card);
 }

@@ -135,7 +135,7 @@
       "aria-label",
       isLight ? "Switch to dark mode" : "Switch to light mode",
     );
-    btn.setAttribute("data-tip", isLight ? "Dark mode" : "Light mode");
+    btn.setAttribute("data-tip", isLight ? "Light mode" : "Dark mode");
     btn.classList.toggle("sidebar-theme-switch--light", isLight);
   }
 
