@@ -56,6 +56,23 @@
     return _downloadStartPauseHost;
   }
 
+  function _dispatchDownloadStatusEvent(ev) {
+    const status = _downloadStatusHost;
+    if (status && typeof status.handleStatus === "function") {
+      status.handleStatus(ev);
+      return;
+    }
+    if (typeof window._handleDlStatus === "function") {
+      window._handleDlStatus(ev);
+    }
+  }
+
+  function _startDownloadSse() {
+    if (_downloadSseHost && typeof _downloadSseHost.startSSE === "function") {
+      _downloadSseHost.startSSE();
+    }
+  }
+
   function _getHistoryDbMap() {
     return _historyStoreHost
       ? _historyStoreHost.getDbItemByKey()
@@ -71,6 +88,8 @@
   let _downloadStatusHost = null;
   /** D1E Start/Pause button host (set in `initDownload()`). */
   let _downloadStartPauseHost = null;
+  /** D1F SSE / EventSource host (set in `initDownload()`). */
+  let _downloadSseHost = null;
   /** H5 virtualization host (set in `initDownload()`). */
   let _historyVirtHost = null;
   /** H6 hydrate/persist host (set in `initDownload()`). */
@@ -86,7 +105,6 @@
   /** H3 card rendering host (set in `initDownload()`). */
   let _historyCardHost = null;
 
-  let _sse = null;
   let _trackStatusMap = new Map();
   /** Visible row keys (filtered for virtualized list); mirrors `_tsOrderAll` when not virtual or when showing all. */
   let _tsOrder = [];
@@ -98,25 +116,6 @@
   let _historyFilterHost = null;
   /** Skip redundant filter passes while bulk-loading history from DB. */
   let _tsSkipHistoryFilterApply = false;
-
-  function startSSE() {
-    if (_sse) return;
-    _sse = new EventSource("/api/stream");
-
-    // Structured per-URL status events
-    _sse.addEventListener("status", (e) => {
-      try {
-        const ev = JSON.parse(e.data);
-        if (window._handleDlStatus) window._handleDlStatus(ev);
-      } catch (_) {}
-    });
-
-    _sse.onerror = () => {
-      _sse.close();
-      _sse = null;
-      setTimeout(startSSE, 3000);
-    };
-  }
 
   function _scrollContainerAtBottom(el, slackPx) {
     return QG.core.dom.scrollContainerAtBottom(el, slackPx);
@@ -429,7 +428,7 @@
   function showApp() {
     document.getElementById("setup-overlay").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
-    startSSE();
+    _startDownloadSse();
   }
 
   // ── Browse folder ─────────────────────────────────────────
@@ -1002,6 +1001,17 @@
           pauseDownload: () => api.downloadApi.pause(),
         });
     }
+    if (
+      QG.features.download &&
+      QG.features.download.internals &&
+      typeof QG.features.download.internals.bootstrapSseClient === "function"
+    ) {
+      _downloadSseHost = QG.features.download.internals.bootstrapSseClient({
+        streamUrl: "/api/stream",
+        reconnectDelayMs: 3000,
+        handleStatusEvent: _dispatchDownloadStatusEvent,
+      });
+    }
 
     const clearTrackStatusBtn = document.getElementById("dl-clear-track-status");
     const clearHistoryConfirm = document.getElementById("dl-clear-history-confirm");
@@ -1118,17 +1128,8 @@
         init(_deps) {
           /* click listener bound in bootstrapStartPause */
         },
-        startSSE,
-        handleStatusEvent(ev) {
-          const status = _downloadStatusHost;
-          if (status && typeof status.handleStatus === "function") {
-            status.handleStatus(ev);
-            return;
-          }
-          if (typeof window._handleDlStatus === "function") {
-            window._handleDlStatus(ev);
-          }
-        },
+        startSSE: _startDownloadSse,
+        handleStatusEvent: _dispatchDownloadStatusEvent,
         startFromCurrentQueue() {
           const sp = _downloadStartPauseHost;
           if (sp && typeof sp.startFromCurrentQueue === "function") {

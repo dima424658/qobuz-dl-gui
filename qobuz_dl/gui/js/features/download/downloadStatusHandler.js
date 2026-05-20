@@ -97,7 +97,7 @@
           }
         }
         prog?.updateProgress();
-        hist?.applyFilter();
+        deps.historyVirtOnScroll();
       } else if (ev.type === "track_download_progress") {
         const pa =
           ev.lyric_album != null && String(ev.lyric_album).trim() !== ""

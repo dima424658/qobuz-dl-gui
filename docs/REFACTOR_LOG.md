@@ -761,7 +761,26 @@ Commit: pending
 ### Notes
 
 - **`features.download.pause()`** still calls **`api.downloadApi.pause()`** directly (no button chrome) — intentional for programmatic pause.
-- Next: **D1F** EventSource ownership (`startSSE`, **`_sse`**).
+- Next: **D1F** EventSource ownership (see Checkpoint D1F).
+
+## Checkpoint D1F — SSE / EventSource client (`sseClient.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/sseClient.js`: **`QobuzGui.features.download.internals.bootstrapSseClient(deps)`** owns EventSource connect, **`status`** event parse/dispatch, error close, and 3s reconnect. Exposes `startSSE`, `close`, `isConnected`.
+- **`app.js`**: **`_downloadSseHost`**; removed inline **`_sse`** + **`startSSE()`**; **`_startDownloadSse`** + **`_dispatchDownloadStatusEvent`** helpers; bootstrap after start-pause; **`showApp()`** and **`features.download.install`** delegate to helpers.
+- **`index.html`**: **`sseClient.js`** after **`downloadStartPause.js`**; **`app.js?v=99`**.
+
+### Validation
+
+- `node --check` on **`sseClient.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **D1 download extraction complete.** All planned download runtime modules (D1A–D1F) are landed; **`app.js`** download tab owns bootstrap wiring + history/queue orchestration only.
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -770,8 +789,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A–D1E
-Next: download D1F (EventSource / startSSE)
+Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A–D1F (complete)
+Next: optional later — feedback subsystem split, script-order cleanup
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -791,6 +810,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1E** are landed. **`app.js`** still owns **`startSSE`** / **`_sse`** until D1F. Next controlled step: **D1F** (EventSource ownership).
+**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1F** are landed. Download runtime extraction is **complete**; **`app.js`** download tab is bootstrap wiring + orchestration only.
 
 

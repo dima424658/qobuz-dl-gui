@@ -258,6 +258,16 @@
       tags
         .querySelectorAll(".track-missing-placeholder-btn")
         .forEach((n) => n.remove());
+
+      const isDownloading =
+        cls !== "done" && cls !== "failed" && !linkOpts?.href;
+      if (isDownloading) {
+        const activeBtn = card.querySelector(
+          "button.download-chip.track-dl-btn--active",
+        );
+        if (activeBtn) return;
+      }
+
       const old = card.querySelector(".download-chip");
       if (old) old.remove();
 
@@ -299,6 +309,10 @@
       const revealPath = (card.dataset.audioPath || "").trim();
       const canReveal = cls === "done" && revealPath !== "";
 
+      if (cls === "done" || cls === "failed") {
+        delete card.dataset.dlProgressPct;
+      }
+
       if (cls === "done") {
         el.classList.add("track-dl-btn--done");
         if (canReveal) {
@@ -327,6 +341,14 @@
       } else {
         el.classList.add("track-dl-btn--active");
         el.setAttribute("aria-label", "Downloading");
+        const savedPct = parseInt(card.dataset.dlProgressPct || "0", 10);
+        if (Number.isFinite(savedPct) && savedPct > 0) {
+          const fillEl = el.querySelector(".track-dl-btn-fill");
+          if (fillEl) {
+            fillEl.style.transform = `scaleY(${Math.min(100, savedPct) / 100})`;
+          }
+          el.setAttribute("aria-label", `Downloading, ${savedPct}%`);
+        }
       }
       tags.appendChild(el);
       if (cls === "failed") {
@@ -380,6 +402,7 @@
       const r = Number(received);
       if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(r)) return;
       const pct = Math.max(0, Math.min(100, Math.round((r / t) * 100)));
+      card.dataset.dlProgressPct = String(pct);
       const fill = btn.querySelector(".track-dl-btn-fill");
       if (fill) {
         const f = pct / 100;
