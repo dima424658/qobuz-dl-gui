@@ -807,7 +807,7 @@ Commit: pending
 
 - Added `qobuz_dl/gui/js/features/status/statusController.js`: **`QobuzGui.features.status`** (`updateStatus`, **`checkStatus`** with tolerant **`statusApi` → `getJson` → `fetch`** chain).
 - Added `qobuz_dl/gui/js/features/setup/authTabs.js`, **`browseButtons.js`**, **`setupController.js`**: additive **`QG.features.setup`** namespace; **`configure(_deps)`** before **`initSetup()`**; **`showApp`** calls injected **`startDownloadSse`**; OAuth/token/legacy + **`resolveInitialView`** moved out of **`app.js`**.
-- **`app.js`**: slim **`init()`** — **`setup.configure`** → auth/browse/setup init → **`initDownload()`** → settings/search → **`resolveInitialView()`**; **`initSettings`** / issue report use **`features.status.*`**.
+- **`app.js`**: slim **`init()`** — **`setup.configure`** → auth/browse/setup init → **`initDownload()`** → search/settings actions → **`resolveInitialView()`**; status via **`features.status.*`**.
 - **`index.html`**: status + setup scripts before **`settingsForm.js`**; **`app.js?v=100`**.
 
 ### Validation
@@ -817,7 +817,42 @@ Commit: pending
 ### Notes
 
 - **`browseButtons.js`** binds all **`.btn-browse`** (setup + settings), not setup-only.
-- Settings re-auth OAuth poll remains in **`initSettings()`** (optional S2 dedupe with **`initSetup`**).
+- Settings re-auth OAuth poll moved to **`settingsActions.js`** in S2B (optional future dedupe with **`initSetup`**).
+
+## Checkpoint S2A — Cover art mutex (`coverArtMutex.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/settings/coverArtMutex.js`: **`QobuzGui.features.settings.coverArtMutex.init(prefix)`** wires embed-art / og-cover / no-cover mutual exclusivity for **`dl-*`** or **`cfg-*`** prefixes.
+- **`app.js`**: removed inline **`initCoverArtMutex`**; **`initDownload()`** calls **`coverArtMutex.init('dl')`**.
+- **`index.html`**: **`coverArtMutex.js`** after **`downloadOptionsAutosave.js`**.
+
+### Validation
+
+- `node --check` on **`coverArtMutex.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+## Checkpoint S2B — Settings-popover actions (`settingsActions.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/settings/settingsActions.js`: **`QobuzGui.features.settings.actions.init(deps)`** owns settings-popover actions (re-auth, update check, purge DB, issue-report launch wiring). Safe fallbacks for **`checkStatus`**, **`updateStatus`**, **`loadSettingsForm`**. Calls **`coverArtMutex.init('cfg')`** at end of **`init`**.
+- **`app.js`**: removed **`initSettings()`**; **`init()`** calls **`settings.actions.init({ ... })`**; fixed **`_setTrackLyricsChip`** argument indentation.
+- **`index.html`**: **`settingsActions.js`** after **`coverArtMutex.js`**; **`app.js?v=101`**.
+
+### Validation
+
+- `node --check` on new modules + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- Does **not** dedupe OAuth polling with **`setupController.initSetup()`**.
+- Does **not** move **`issueReportSubsystem.js`** — only settings-side **`issueReport.init`** binding.
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -826,9 +861,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6 + C1, replacements R1–R3, lyrics L1–L2, download D1A–D1F (complete), status/setup S1
-Next: optional later — settings handlers split, feedback subsystem split, script-order cleanup
-Optional later: feedback subsystem split, script-order cleanup
+Done: queue internals, history H1–H6 + C1, replacements R1–R3, lyrics L1–L2, download D1A–D1F (complete), status/setup S1, settings S2A–S2B
+Next: optional later — B1 bootstrap cleanup, feedback subsystem split, script-order cleanup
 ```
 
 ### `issueReportSubsystem.js` (~880 lines)
@@ -847,6 +881,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6 + **C1**, **replacements R1–R3**, **lyrics L1–L2**, **download D1A–D1F** (complete), and **status/setup S1** are landed. **`app.js`** is bootstrap wiring + settings handlers + orchestration.
+**Frontend migration (~85%+):** History H1–H6 + **C1**, **replacements R1–R3**, **lyrics L1–L2**, **download D1A–D1F** (complete), **status/setup S1**, and **settings S2A–S2B** are landed. **`app.js`** is host variables, thin delegates, **`initDownload()`**, **`init()`**, and DOMContentLoaded bootstrap.
 
 

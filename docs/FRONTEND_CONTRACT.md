@@ -40,7 +40,9 @@ Do not break these during extraction unless a failing test or broken route force
   27. `/gui/js/features/setup/setupController.js` — **`QobuzGui.features.setup`** (`configure`, `showSetup`, `showApp`, `initSetup`, `resolveInitialView`); uses additive namespace + stored **`_deps`**
   28. `/gui/js/features/settings/settingsForm.js` — `QobuzGui.features.settings.settingsForm` (`loadIntoForm`, `mirrorConfigOntoForms`)
   29. `/gui/js/features/settings/downloadOptionsAutosave.js` — `QobuzGui.features.settings.downloadOptionsAutosave.bind()`
-  30. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
+  30. `/gui/js/features/settings/coverArtMutex.js` — **`QobuzGui.features.settings.coverArtMutex.init(prefix)`** (`dl` / `cfg` checkbox mutual exclusivity; registration-only at load)
+  31. `/gui/js/features/settings/settingsActions.js` — **`QobuzGui.features.settings.actions.init(deps)`** (settings-popover actions; inert until **`init`**)
+  32. `/gui/js/features/queue/queueController.js` — stable `QobuzGui.features.queue` façade (`install`, `addUrl`, …); no-op until `install`
   27. `/gui/js/features/download/downloadController.js` — **`QobuzGui.features.download`** (`install`, `init`, `startSSE`, `handleStatusEvent`, `startFromCurrentQueue`, `pause`, `isDownloading`, `qUrlForPurchaseSlot`); no-op until `app.js` **`install`**
   28. `/gui/js/features/download/downloadProgress.js` — **`bootstrapProgress(deps)`** (progress bar + Start/Pause button chrome)
   29. `/gui/js/features/download/queueIssueBadges.js` — **`bootstrapQueueIssueBadges(deps)`** (purchase-only badges, URL error tips)
@@ -60,8 +62,8 @@ Do not break these during extraction unless a failing test or broken route force
   37. `/gui/js/features/replacements/missingPlaceholder.js` — **`bootstrapMissingPlaceholder(deps)`** (`.missing.txt` placeholder writes)
   38. `/gui/js/features/search/searchController.js` — `QobuzGui.features.search` (`init`, `syncQueuedHighlights`); uses `features.queue`
   39. `/gui/js/ui/feedbackMessage.js` — `QobuzGui.ui.feedbackMessage`
-  40. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)` — **`app.js`** passes **`QobuzGui.features.status.checkStatus`**
-  41. `/gui/app.js` — **`init()`**: **`features.setup.configure`** + auth/browse/setup init + **`resolveInitialView`**; **`initDownload()`**: queue **`bootstrap`** + history **virt/filter/replacement*/card/hydrate/clearConfirm** + **`features.history.install`** + …
+  40. `/gui/js/features/feedback/issueReportSubsystem.js` — `QobuzGui.features.feedback.issueReport.init(checkStatus)` — launch wiring from **`settings.actions.init`**
+  41. `/gui/app.js` — **`init()`**: **`features.setup.configure`** + auth/browse/setup init + **`resolveInitialView`**; **`settings.actions.init(deps)`**; **`initDownload()`**: queue/history/download bootstrap + **`coverArtMutex.init('dl')`**
 
 - **Optional later cleanup (non-goal until someone does it deliberately):** a more uniform mental order might be API → core → API extensions → shared UI → features → app. Today's order mixes `features`/`ui`/core somewhat for historical incremental extraction; reordering requires re-validating every cross-file assumption.
 
@@ -83,6 +85,8 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.updateBanner` (`js/features/settings/updateBanner.js`)
   - `QobuzGui.features.settings.settingsForm` (`js/features/settings/settingsForm.js`)
   - `QobuzGui.features.settings.downloadOptionsAutosave` (`js/features/settings/downloadOptionsAutosave.js`)
+  - **`QobuzGui.features.settings.coverArtMutex`** (`js/features/settings/coverArtMutex.js`) — **`init(prefix)`** wires **`${prefix}-embed-art`**, **`${prefix}-og-cover`**, **`${prefix}-no-cover`** mutual exclusivity; no-op if elements missing. **`initDownload()`** calls **`init('dl')`**; **`settings.actions.init`** calls **`init('cfg')`**.
+  - **`QobuzGui.features.settings.actions`** (`js/features/settings/settingsActions.js`) — **`init(deps)`** owns **settings-popover actions**: re-auth OAuth poll, manual update check, purge DB, and **issue-report launch wiring** via **`feedback.issueReport.init(checkStatus)`** (not a feedback-subsystem move). **`deps`:** **`checkStatus`**, **`updateStatus`**, **`loadSettingsForm`** with safe no-op fallbacks. Registration-only at load; DOM binding inside **`init`** only.
   - `QobuzGui.features.search` (`js/features/search/searchController.js`)
   - `QobuzGui.features.queue` (`queueController.js` + **`install`** wired from `initDownload`)
   - **`QobuzGui.features.download`** (`js/features/download/downloadController.js`) — **`install(impl)`** from **`initDownload()`** (guarded). Public: `init`, `startSSE`, `handleStatusEvent`, `startFromCurrentQueue`, `pause`, `isDownloading`, `qUrlForPurchaseSlot`. Safe defaults until **`install`** runs; **`pause()`** resolves without throwing when uninstalled or API missing. **D1A:** impl forwards to inline **`app.js`** closures; compatibility globals unchanged.
@@ -105,7 +109,7 @@ Do not break these during extraction unless a failing test or broken route force
   - `QobuzGui.features.replacements.internals.bootstrapResolutionButtons` (`js/features/replacements/resolutionButtons.js`)
   - `QobuzGui.features.replacements.internals.bootstrapMissingPlaceholder` (`js/features/replacements/missingPlaceholder.js`) — **`deps`:** **`getAttachAnchorCard`**, **`getAttachStatusElementForCard`** from attach host only (no hidden anchor state).
   - **`QobuzGui.ui.feedbackMessage`** (`js/ui/feedbackMessage.js`): `show`, `showButton` for `.feedback-msg` and the settings update-check button.
-  - **`QobuzGui.features.feedback.issueReport`** (`js/features/feedback/issueReportSubsystem.js`): `init(checkStatus)` — settings gear popover, issue-report / sent-history UX, worker submit endpoint, logs modal (**invoked from `app.js`** `initSettings()` with **`QobuzGui.features.status.checkStatus`**).
+  - **`QobuzGui.features.feedback.issueReport`** (`js/features/feedback/issueReportSubsystem.js`): `init(checkStatus)` — settings gear popover, issue-report / sent-history UX, worker submit endpoint, logs modal (**invoked from `settings.actions.init`** with injected **`checkStatus`**).
   - **`QobuzGui.features.lyrics.lyricOutputSettings`** (`js/features/lyrics/lyricOutputSettings.js`): download ↔ settings lyric toggles sync and `/api/config` persist.
   - **`QobuzGui.features.lyrics.preview`** (`js/features/lyrics/lyricPreviewPlayer.js`): lyric search **`#lyric-search-preview-*`** playback and body render. Public: **`init(deps)`** (optional **`onOverlayClosed`** in **`deps`**), **`close()`**, **`teardown()`**, **`parseLrcLines`**, **`renderSynced`**, **`renderPlain`**, **`previewAudioUrl`**. **`teardown()`** resets audio/seek UI and internal highlight state only; **`close()`** runs **`teardown()`**, hides **`#lyric-search-preview-panel`**, then invokes **`deps.onOverlayClosed`** (modal clears **`previewingLrclibId`** / result-row **Preview** buttons).
   - **`QobuzGui.features.lyrics.search`** (`lyricSearchController.js` + **`lyricSearchModal.js`**): **`install(impl)`**, **`init(deps)`**, **`openForCard(card)`**, **`close()`**, **`closePreview()`**. Modal owns ctx/session/abort guards; results renderer uses ctx + callbacks only.

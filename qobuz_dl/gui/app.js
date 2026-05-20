@@ -306,11 +306,11 @@
   ) {
     if (_historyCardHost) {
       _historyCardHost.setTrackLyricsChip(
-      trackNo,
-      title,
+        trackNo,
+        title,
         lyricType,
         confidence,
-      lyricAlbum,
+        lyricAlbum,
         lyricProvider,
         lyricDestination,
       );
@@ -332,32 +332,6 @@
     }
     _queueHost.refreshAlbumQueueCardMetas();
     _tsUpdateErrorHistoryCountBadge();
-  }
-
-  // ── Cover art mutual exclusivity ──────────────────────────
-  // "Skip Cover Art" is incompatible with "Write Art to Tracks" and
-      // "Full-Res Cover" | wire them up for whichever prefix is passed ('dl'/'cfg').
-  function initCoverArtMutex(prefix) {
-    const embedArt = document.getElementById(`${prefix}-embed-art`);
-    const ogCover = document.getElementById(`${prefix}-og-cover`);
-    const noCover = document.getElementById(`${prefix}-no-cover`);
-    if (!embedArt || !ogCover || !noCover) return;
-
-    // Enabling "Skip Cover Art" turns the other two off
-    noCover.addEventListener("change", () => {
-      if (noCover.checked) {
-        embedArt.checked = false;
-        ogCover.checked = false;
-      }
-    });
-
-    // Enabling either art option turns off "Skip Cover Art"
-    embedArt.addEventListener("change", () => {
-      if (embedArt.checked) noCover.checked = false;
-    });
-    ogCover.addEventListener("change", () => {
-      if (ogCover.checked) noCover.checked = false;
-    });
   }
 
   // ── Download tab ──────────────────────────────────────────
@@ -598,7 +572,7 @@
         });
     }
     _queueHost.initUrlQueue();
-    initCoverArtMutex("dl");
+    QG.features.settings.coverArtMutex.init("dl");
 
     QG.features.settings.downloadOptionsAutosave.bind();
 
@@ -871,120 +845,6 @@
     }
   }
 
-  // ── Settings tab ──────────────────────────────────────────
-
-  function initSettings() {
-    const feedback = document.getElementById("settings-popover-feedback");
-    QG.features.feedback.issueReport.init(QG.features.status.checkStatus);
-
-    // ── Re-auth (OAuth) ───────────────────────────────────────
-    const reauthBtn = document.getElementById("settings-reauth-btn");
-    const reauthText = document.getElementById("settings-reauth-text");
-    const reauthSpinner = document.getElementById("settings-reauth-spinner");
-    let _reauthPolling = null;
-
-    reauthBtn.addEventListener("click", async () => {
-      reauthBtn.disabled = true;
-      reauthText.textContent = "Opening browser…";
-      reauthSpinner.classList.remove("hidden");
-
-      try {
-        const res = await api.setupApi.oauthStart();
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "OAuth start failed");
-
-        reauthText.textContent = "Waiting for login…";
-        if (_reauthPolling) clearInterval(_reauthPolling);
-        _reauthPolling = setInterval(async () => {
-          const s = await QG.features.status.checkStatus();
-          if (s && s.ready) {
-            clearInterval(_reauthPolling);
-            _reauthPolling = null;
-            reauthText.textContent = "Re-login with Qobuz";
-            reauthSpinner.classList.add("hidden");
-            reauthBtn.disabled = false;
-            QG.features.status.updateStatus(true);
-            await QG.features.settings.settingsForm.loadIntoForm();
-            QG.ui.feedbackMessage.show(feedback, "Reconnected successfully.", true);
-          }
-        }, 2000);
-      } catch (e) {
-        QG.ui.feedbackMessage.show(feedback, e.message, false);
-        reauthText.textContent = "Re-login with Qobuz";
-        reauthSpinner.classList.add("hidden");
-        reauthBtn.disabled = false;
-      }
-    });
-
-    const checkUpdBtn = document.getElementById("settings-check-updates-btn");
-    const updFeedback = document.getElementById("settings-update-feedback");
-    if (checkUpdBtn && updFeedback) {
-      checkUpdBtn.addEventListener("click", async () => {
-        const originalText = checkUpdBtn.dataset.defaultText || checkUpdBtn.textContent;
-        checkUpdBtn.dataset.defaultText = originalText;
-        checkUpdBtn.disabled = true;
-        updFeedback.className = "feedback-msg hidden";
-        checkUpdBtn.classList.remove("settings-check-updates-btn--ok", "settings-check-updates-btn--err");
-        checkUpdBtn.textContent = "Checking...";
-        try {
-          const data = await window.QobuzGui.features.updateBanner.refreshUpdateCheck(
-            true,
-          );
-          if (!data) throw new Error("Network error");
-          if (data.skipped && data.reason === "repo_not_configured") {
-            QG.ui.feedbackMessage.showButton(
-              checkUpdBtn,
-              "Update source not configured (see qobuz_dl/version.py).",
-              false,
-            );
-          } else if (!data.ok) {
-            QG.ui.feedbackMessage.showButton(checkUpdBtn, data.error || "Check failed", false);
-          } else if (data.update_available) {
-            let updateMsg = "Update available: v" + data.latest_version;
-            if (data.download_url && !data.can_auto_install) {
-              updateMsg += data.frozen
-                ? " (manual install on this platform)"
-                : " (run the packaged desktop build to auto-install)";
-            }
-            QG.ui.feedbackMessage.showButton(checkUpdBtn, updateMsg, true);
-          } else {
-            QG.ui.feedbackMessage.showButton(checkUpdBtn, "You're on the latest version.", true);
-          }
-        } catch (e) {
-          QG.ui.feedbackMessage.showButton(checkUpdBtn, e.message || "Check failed", false);
-        } finally {
-          if (
-            !checkUpdBtn.classList.contains("settings-check-updates-btn--ok") &&
-            !checkUpdBtn.classList.contains("settings-check-updates-btn--err")
-          ) {
-            checkUpdBtn.disabled = false;
-            checkUpdBtn.textContent = originalText;
-          }
-        }
-      });
-    }
-
-    // ── Purge database ────────────────────────────────────────
-    document
-      .getElementById("settings-purge-btn")
-      .addEventListener("click", async () => {
-        if (
-          !confirm(
-            "Purge the download database? Future downloads won't be skipped.",
-          )
-        )
-          return;
-        try {
-          const res = await api.setupApi.purge();
-          const data = await res.json();
-          if (!data.ok) throw new Error(data.error || "Purge failed");
-          QG.ui.feedbackMessage.show(feedback, "Database purged.", true);
-        } catch (e) {
-          QG.ui.feedbackMessage.show(feedback, e.message, false);
-        }
-      });
-  }
-
   // ── Init ─────────────────────────────────────────────────
   async function init() {
     window.QobuzGui.ui.collapses.init();
@@ -1001,7 +861,11 @@
 
     initDownload();
     QG.features.search.init();
-    initSettings();
+    QG.features.settings.actions.init({
+      checkStatus: QG.features.status.checkStatus,
+      updateStatus: QG.features.status.updateStatus,
+      loadSettingsForm: () => QG.features.settings.settingsForm.loadIntoForm(),
+    });
     window.QobuzGui.features.updateBanner.init();
     setTimeout(() => {
       void window.QobuzGui.features.updateBanner.refreshUpdateCheck(true);
