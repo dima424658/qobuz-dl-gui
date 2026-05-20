@@ -12,3 +12,4 @@ SMOKE_TEST_NOTES.md
 qobuz_dl/gui/.vite/
 qobuz_dl/gui/dist/
 *.pyc
+*/.vite/
