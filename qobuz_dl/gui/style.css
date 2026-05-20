@@ -5681,6 +5681,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 
 /* ============================================================
    LIGHT MODE — inverted tag fills (solid default, tint hover)
+   Hover keeps var(--text); only the fill lightens.
    ============================================================ */
 [data-theme="light"] .fmt-vars-table code {
     background: var(--accent);
@@ -5690,7 +5691,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 
 [data-theme="light"] .fmt-vars-table code:hover {
     background: var(--accent-dim);
-    color: var(--accent);
+    color: var(--text);
     border-color: var(--accent-border);
 }
 
@@ -5716,7 +5717,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .track-status-chip.lyrics-chip.synced:not(.loading):hover,
 [data-theme="light"] .track-status-chip.lyrics-chip.synced:not(.loading):focus-visible {
     background: var(--accent-dim) !important;
-    color: var(--accent) !important;
+    color: var(--text) !important;
     border-color: var(--accent-border) !important;
 }
 
@@ -5731,7 +5732,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .track-status-chip.lyrics-chip.plain:not(.loading):hover,
 [data-theme="light"] .track-status-chip.lyrics-chip.plain:not(.loading):focus-visible {
     background: var(--chip-plain-bg) !important;
-    color: var(--success) !important;
+    color: var(--text) !important;
     border-color: var(--success-border) !important;
 }
 
@@ -5746,7 +5747,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .track-status-chip.lyrics-chip.instrumental:not(.loading):hover,
 [data-theme="light"] .track-status-chip.lyrics-chip.instrumental:not(.loading):focus-visible {
     background: var(--chip-instrumental-bg) !important;
-    color: var(--chip-instrumental-text) !important;
+    color: var(--text) !important;
     border-color: var(--chip-instrumental-border) !important;
 }
 
@@ -5766,7 +5767,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .track-status-chip.lyrics-chip.none:not(.loading):focus-visible,
 [data-theme="light"] .track-status-chip.lyrics-chip.error:not(.loading):focus-visible {
     background: var(--danger-dim) !important;
-    color: var(--danger) !important;
+    color: var(--text) !important;
     border-color: var(--danger-border) !important;
 }
 
@@ -5778,7 +5779,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 
 [data-theme="light"] .track-status-chip.done:hover {
     background: var(--success-dim) !important;
-    color: var(--success) !important;
+    color: var(--text) !important;
     border-color: var(--success-border) !important;
 }
 
@@ -5793,7 +5794,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .track-status-chip.lyrics-chip.loading:hover,
 [data-theme="light"] .track-status-chip.lyrics-chip.loading:focus-visible {
     background: var(--chip-loading-bg) !important;
-    color: var(--chip-loading-text) !important;
+    color: var(--text) !important;
     border-color: var(--chip-loading-border) !important;
 }
 
@@ -5806,7 +5807,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .confidence-chip-wrap:hover .track-status-chip.confidence-chip,
 [data-theme="light"] .confidence-chip-wrap:focus-visible .track-status-chip.confidence-chip {
     background: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-tint-alpha)) !important;
-    color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    color: var(--text) !important;
     border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-border-alpha)) !important;
 }
 
@@ -5822,7 +5823,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 
 [data-theme="light"] .queue-card-quality:hover {
     background: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-quality-tint-alpha)) !important;
-    color: rgb(var(--chip-r) var(--chip-g) var(--chip-b)) !important;
+    color: var(--text) !important;
     border-color: rgb(var(--chip-r) var(--chip-g) var(--chip-b) / var(--chip-quality-border-alpha)) !important;
 }
 
@@ -6006,7 +6007,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .lyric-search-kind--synced:hover,
 [data-theme="light"] .lyric-search-kind--synced:focus-visible {
     background: var(--accent-dim);
-    color: var(--accent);
+    color: var(--text);
     border-color: var(--accent-border);
 }
 
@@ -6019,7 +6020,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .lyric-search-kind--plain:hover,
 [data-theme="light"] .lyric-search-kind--plain:focus-visible {
     background: var(--chip-plain-bg);
-    color: var(--success);
+    color: var(--text);
     border-color: var(--success-border);
 }
 
@@ -6032,7 +6033,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .lyric-search-kind--instrumental:hover,
 [data-theme="light"] .lyric-search-kind--instrumental:focus-visible {
     background: var(--chip-instrumental-bg);
-    color: var(--chip-instrumental-text);
+    color: var(--text);
     border-color: var(--chip-instrumental-border);
 }
 
@@ -6045,7 +6046,7 @@ body:has(#dl-smart-discography:checked) .dynamic-filter[data-sd]::before {
 [data-theme="light"] .lyric-search-kind--muted:hover,
 [data-theme="light"] .lyric-search-kind--muted:focus-visible {
     background: var(--danger-dim);
-    color: var(--danger);
+    color: var(--text);
     border-color: var(--danger-border);
 }
 
