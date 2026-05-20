@@ -281,11 +281,11 @@
   ) {
     if (_historyCardHost) {
       _historyCardHost.setTrackLyricsChip(
-        trackNo,
-        title,
+      trackNo,
+      title,
         lyricType,
         confidence,
-        lyricAlbum,
+      lyricAlbum,
         lyricProvider,
         lyricDestination,
       );
@@ -522,7 +522,7 @@
             user_auth_token,
             default_folder: folder,
             default_quality: quality,
-          });
+        });
         const data = await res.json();
         if (data.ok) {
           showApp();
@@ -573,7 +573,7 @@
             password,
             default_folder: folder,
             default_quality: quality,
-          });
+        });
         const data = await res.json();
         if (data.ok) {
           showApp();
@@ -1091,13 +1091,13 @@
           }
           if (!_cardHasResolvedRealAudio(_tcard)) {
             _hist().setDownloadChip(
-              trackNo,
-              title,
-              "downloading",
-              "",
-              undefined,
-              evAlb,
-            );
+          trackNo,
+          title,
+          "downloading",
+          "",
+          undefined,
+          evAlb,
+        );
           }
         }
         _updateProgress();
@@ -1232,8 +1232,8 @@
               if (_replacementResolutionHost) {
                 _replacementResolutionHost.syncResolutionButtonStates(preCard);
               }
-            } else {
-              delete preCard.dataset.attachSearchEligible;
+          } else {
+            delete preCard.dataset.attachSearchEligible;
             }
           }
         }
