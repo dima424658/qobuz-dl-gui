@@ -82,6 +82,13 @@
       updateVirtInnerHeight();
     }
 
+    function purgeVirtDomCards() {
+      if (!virtInnerEl) return;
+      virtInnerEl.querySelectorAll(".track-status-card").forEach((c) => {
+        c.remove();
+      });
+    }
+
     function render() {
       if (!virtActive || !virtInnerEl) return;
       const list = document.getElementById("dl-track-status");
@@ -90,7 +97,10 @@
       const n = order.length;
       const H = virtRowH;
       virtInnerEl.style.minHeight = `${Math.max(0, n) * H}px`;
-      if (n === 0) return;
+      if (n === 0) {
+        purgeVirtDomCards();
+        return;
+      }
 
       const st = list.scrollTop;
       const ch = list.clientHeight || 1;
@@ -105,9 +115,13 @@
 
       const cardMap = deps.getCardMap();
       const keyToIndex = deps.getKeyToIndex();
+      const allowedKeys = new Set(order);
       for (const [k, card] of [...cardMap]) {
         const idx = keyToIndex.get(k);
-        if (idx === undefined) continue;
+        if (idx === undefined || !allowedKeys.has(k)) {
+          if (card.isConnected) card.remove();
+          continue;
+        }
         if (!want.has(idx)) {
           card.remove();
           cardMap.delete(k);
@@ -119,7 +133,14 @@
       for (let j = 0; j < sorted.length; j++) {
         const i = sorted[j];
         const k = order[i];
-        if (!k || cardMap.has(k)) continue;
+        if (!k) continue;
+        if (cardMap.has(k)) {
+          const existing = cardMap.get(k);
+          if (existing && !existing.isConnected) {
+            virtInnerEl.appendChild(existing);
+          }
+          continue;
+        }
         const it = dbMap.get(k);
         if (!it) continue;
         deps.mountDbItemAtIndex(it, i);
@@ -190,6 +211,15 @@
       });
     }
 
+    function runVirtRenderPass() {
+      updateVirtInnerHeight();
+      requestAnimationFrame(() => {
+        render();
+        measureRowH();
+        render();
+      });
+    }
+
     return {
       isVirtActive,
       getVirtInnerEl,
@@ -202,6 +232,7 @@
       onScroll,
       render,
       runInitialRenderPass,
+      runVirtRenderPass,
     };
   }
 

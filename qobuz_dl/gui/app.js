@@ -19,6 +19,10 @@
     return QG.features.lyrics.lyricOutputSettings;
   }
 
+  function _lyricPv() {
+    return QG.features.lyrics.preview;
+  }
+
   function _syncSearchQueuedHighlights() {
     if (QG.features.search && QG.features.search.syncQueuedHighlights) {
       QG.features.search.syncQueuedHighlights();
@@ -307,9 +311,6 @@
   const _LYRIC_SEARCH_PAGE_STEP = 5;
   let _lyricSearchScrollRaf = null;
   let _lyricSearchSeq = 0;
-  let _lyricPreviewRaf = 0;
-  let _lyricPreviewLastActiveIdx = -1;
-  let _lyricPreviewSeekMouse = false;
   const _LYRIC_SEARCH_ANCHOR_CLASS = "lyric-search-anchor";
 
   function _abortLyricSearchFetches() {
@@ -344,320 +345,13 @@
     if (card) card.classList.add(_LYRIC_SEARCH_ANCHOR_CLASS);
   }
 
-  function _formatLyricPreviewTime(sec) {
-    if (!Number.isFinite(sec) || sec < 0) sec = 0;
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${String(s).padStart(2, "0")}`;
-  }
-
-  function _teardownLyricPreviewPlayback() {
-    if (_lyricPreviewRaf) {
-      cancelAnimationFrame(_lyricPreviewRaf);
-      _lyricPreviewRaf = 0;
-    }
-    _lyricPreviewSeekMouse = false;
-    _lyricPreviewLastActiveIdx = -1;
-    const audio = document.getElementById("lyric-search-preview-audio");
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-    const playBtn = document.getElementById("lyric-search-preview-play");
-    if (playBtn) {
-      const playIco = playBtn.querySelector(".lyric-search-preview-play-icon");
-      const pauseIco = playBtn.querySelector(".lyric-search-preview-pause-icon");
-      if (playIco) playIco.classList.remove("hidden");
-      if (pauseIco) pauseIco.classList.add("hidden");
-      playBtn.setAttribute("aria-label", "Play");
-    }
-    const seek = document.getElementById("lyric-search-preview-seek");
-    const cur = document.getElementById("lyric-search-preview-cur");
-    const dur = document.getElementById("lyric-search-preview-dur");
-    if (seek) seek.value = "0";
-    if (cur) cur.textContent = "0:00";
-    if (dur) dur.textContent = "0:00";
-  }
-
-  function _lyricPreviewSetPlayingUi(playing) {
-    const playBtn = document.getElementById("lyric-search-preview-play");
-    if (!playBtn) return;
-    const playIco = playBtn.querySelector(".lyric-search-preview-play-icon");
-    const pauseIco = playBtn.querySelector(".lyric-search-preview-pause-icon");
-    if (playIco) playIco.classList.toggle("hidden", playing);
-    if (pauseIco) pauseIco.classList.toggle("hidden", !playing);
-    playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
-  }
-
-  function _lyricPreviewSyncSeekAndTimeFromAudio() {
-    if (_lyricPreviewSeekMouse) return;
-    const audio = document.getElementById("lyric-search-preview-audio");
-    const seek = document.getElementById("lyric-search-preview-seek");
-    const cur = document.getElementById("lyric-search-preview-cur");
-    if (!audio || !seek || !cur) return;
-    const d = audio.duration;
-    if (Number.isFinite(d) && d > 0) {
-      seek.value = String(Math.round((audio.currentTime / d) * 1000));
-    }
-    cur.textContent = _formatLyricPreviewTime(audio.currentTime);
-  }
-
-  /** Apply range value to audio (used while dragging and on release). */
-  function _applyLyricPreviewSeekSliderValue(scrollWhileSeeking = false) {
-    const audio = document.getElementById("lyric-search-preview-audio");
-    const seek = document.getElementById("lyric-search-preview-seek");
-    if (!audio || !seek || seek.disabled) return;
-    const d = audio.duration;
-    if (!Number.isFinite(d) || d <= 0) return;
-    const t = (Number(seek.value) / 1000) * d;
-    audio.currentTime = t;
-    const cur = document.getElementById("lyric-search-preview-cur");
-    if (cur) cur.textContent = _formatLyricPreviewTime(t);
-    _lyricPreviewUpdateActiveLine(t * 1000, { forceScroll: scrollWhileSeeking });
-  }
-
-  function _lyricPreviewSeekToTime(seconds) {
-    const audio = document.getElementById("lyric-search-preview-audio");
-    const seek = document.getElementById("lyric-search-preview-seek");
-    if (!audio || !seek || seek.disabled || !audio.src) return;
-    const d = audio.duration;
-    if (!Number.isFinite(d) || d <= 0) return;
-    const t = Math.min(Math.max(0, seconds), d);
-    audio.currentTime = t;
-    seek.value = String(Math.round((t / d) * 1000));
-    const cur = document.getElementById("lyric-search-preview-cur");
-    if (cur) cur.textContent = _formatLyricPreviewTime(t);
-    _lyricPreviewUpdateActiveLine(t * 1000);
-  }
-
-  function _lyricPreviewUpdateActiveLine(progressMs, opts = {}) {
-    const body = document.getElementById("lyric-search-preview-body");
-    if (!body || !body.classList.contains("lyric-search-preview-body--synced")) {
-      return;
-    }
-    const rows = body.querySelectorAll(".lyric-preview-line");
-    if (!rows.length) return;
-    let active = -1;
-    for (let i = 0; i < rows.length; i++) {
-      const start = Number(rows[i].dataset.startMs || 0);
-      const end = Number(rows[i].dataset.endMs || Number.POSITIVE_INFINITY);
-      if (progressMs >= start && progressMs < end) active = i;
-    }
-    if (active < 0) {
-      for (let i = rows.length - 1; i >= 0; i--) {
-        const start = Number(rows[i].dataset.startMs || 0);
-        if (progressMs >= start) {
-          active = i;
-          break;
-        }
-      }
-    }
-    for (let i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle("is-active", i === active);
-    }
-    if (active >= 0 && active !== _lyricPreviewLastActiveIdx) {
-      const previousActive = _lyricPreviewLastActiveIdx;
-      _lyricPreviewLastActiveIdx = active;
-      if (!_lyricPreviewSeekMouse || opts.forceScroll) {
-        const targetIdx =
-          previousActive >= 0 && active < previousActive
-            ? Math.max(active - 2, 0)
-            : Math.min(active + 2, rows.length - 1);
-        const scrollTarget = rows[targetIdx];
-        scrollTarget.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    } else if (active < 0) {
-      _lyricPreviewLastActiveIdx = -1;
-    }
-  }
-
-  function _lyricPreviewFrame() {
-    const audio = document.getElementById("lyric-search-preview-audio");
-    if (!audio || audio.paused || audio.ended) {
-      _lyricPreviewRaf = 0;
-      return;
-    }
-    _lyricPreviewSyncSeekAndTimeFromAudio();
-    _lyricPreviewUpdateActiveLine(audio.currentTime * 1000);
-    _lyricPreviewRaf = requestAnimationFrame(_lyricPreviewFrame);
-  }
-
-  function _parseLrcLinesForPreview(synced) {
-    const out = [];
-    const lines = String(synced || "").split(/\r?\n/);
-    const re = /^\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]\s*(.*)$/;
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t) continue;
-      const m = t.match(re);
-      if (!m) continue;
-      const mm = parseInt(m[1], 10);
-      const ss = parseFloat(m[2]);
-      if (Number.isNaN(mm) || Number.isNaN(ss)) continue;
-      const start_ms = Math.round((mm * 60 + ss) * 1000);
-      const lyricText = (m[3] || "").trim();
-      const tag = t.match(/^\[[^\]]+\]/);
-      out.push({
-        start_ms,
-        text: lyricText,
-        timeTag: tag ? tag[0] : "",
-      });
-    }
-    out.sort((a, b) => a.start_ms - b.start_ms);
-    for (let i = 0; i < out.length; i++) {
-      out[i].end_ms =
-        i + 1 < out.length ? out[i + 1].start_ms : Number.POSITIVE_INFINITY;
-    }
-    return out;
-  }
-
-  function _renderLyricPreviewSyncedBody(body, parsed) {
-    body.classList.add("lyric-search-preview-body--synced");
-    body.replaceChildren();
-    for (let i = 0; i < parsed.length; i++) {
-      const row = document.createElement("div");
-      row.className = "lyric-preview-line";
-      row.dataset.startMs = String(parsed[i].start_ms);
-      row.dataset.endMs = String(parsed[i].end_ms);
-      const ts = document.createElement("span");
-      ts.className = "lyric-preview-ts";
-      ts.textContent = parsed[i].timeTag || "";
-      const tx = document.createElement("span");
-      tx.className = "lyric-preview-text";
-      tx.textContent = parsed[i].text || " ";
-      row.appendChild(ts);
-      row.appendChild(tx);
-      body.appendChild(row);
-    }
-  }
-
-  function _renderLyricPreviewPlainBody(body, text) {
-    body.classList.remove("lyric-search-preview-body--synced");
-    body.textContent = text || "";
-  }
-
-  function _lyricPreviewAudioUrl(audioPath) {
-    if (!audioPath) return "";
-    return `/api/lyrics/stream-audio?path=${encodeURIComponent(audioPath)}`;
-  }
-
-  function _initLyricPreviewPlayer() {
-    const playBtn = document.getElementById("lyric-search-preview-play");
-    const seek = document.getElementById("lyric-search-preview-seek");
-    const audio = document.getElementById("lyric-search-preview-audio");
-    const previewRoot = document.getElementById("lyric-search-preview");
-    if (!playBtn || !seek || !audio) return;
-    if (playBtn.dataset.bound === "1") return;
-    playBtn.dataset.bound = "1";
-    playBtn.addEventListener("click", () => {
-      if (playBtn.disabled || !audio.src) return;
-      if (audio.paused) {
-        void audio.play();
-      } else {
-        audio.pause();
-      }
-    });
-    seek.addEventListener("pointerdown", (e) => {
-      _lyricPreviewSeekMouse = true;
-      try {
-        seek.setPointerCapture(e.pointerId);
-      } catch (_) {
-        /* ignore */
-      }
-    });
-    function _finishLyricPreviewSeekDrag() {
-      const wasDragging = _lyricPreviewSeekMouse;
-      _lyricPreviewSeekMouse = false;
-      if (!wasDragging) return;
-      _lyricPreviewLastActiveIdx = -1;
-      if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
-        _lyricPreviewUpdateActiveLine(audio.currentTime * 1000);
-      }
-    }
-    seek.addEventListener("pointerup", (e) => {
-      try {
-        seek.releasePointerCapture(e.pointerId);
-      } catch (_) {
-        /* ignore */
-      }
-      _finishLyricPreviewSeekDrag();
-    });
-    seek.addEventListener("pointercancel", () => {
-      _finishLyricPreviewSeekDrag();
-    });
-    seek.addEventListener("lostpointercapture", () => {
-      _finishLyricPreviewSeekDrag();
-    });
-    seek.addEventListener("change", () => {
-      _applyLyricPreviewSeekSliderValue();
-    });
-    seek.addEventListener("input", () => {
-      _applyLyricPreviewSeekSliderValue(true);
-    });
-    if (previewRoot && previewRoot.dataset.lineSeekBound !== "1") {
-      previewRoot.dataset.lineSeekBound = "1";
-      previewRoot.addEventListener("click", (e) => {
-        const line = e.target.closest(".lyric-preview-line");
-        if (!line || !previewRoot.contains(line)) return;
-        const body = document.getElementById("lyric-search-preview-body");
-        if (!body || !body.classList.contains("lyric-search-preview-body--synced")) {
-          return;
-        }
-        const startMs = Number(line.dataset.startMs);
-        if (!Number.isFinite(startMs)) return;
-        _lyricPreviewSeekToTime(startMs / 1000);
-      });
-    }
-    audio.addEventListener("play", () => {
-      _lyricPreviewSetPlayingUi(true);
-      if (!_lyricPreviewRaf) {
-        _lyricPreviewRaf = requestAnimationFrame(_lyricPreviewFrame);
-      }
-    });
-    audio.addEventListener("pause", () => {
-      _lyricPreviewSetPlayingUi(false);
-      if (_lyricPreviewRaf) {
-        cancelAnimationFrame(_lyricPreviewRaf);
-        _lyricPreviewRaf = 0;
-      }
-    });
-    audio.addEventListener("ended", () => {
-      _lyricPreviewSetPlayingUi(false);
-    });
-    audio.addEventListener("loadedmetadata", () => {
-      const durEl = document.getElementById("lyric-search-preview-dur");
-      const d = audio.duration;
-      if (durEl && Number.isFinite(d)) {
-        durEl.textContent = _formatLyricPreviewTime(d);
-      }
-    });
-  }
-
-  function _closeLyricPreviewOverlay() {
-    _teardownLyricPreviewPlayback();
-    const panel = document.getElementById("lyric-search-preview-panel");
-    if (panel) {
-      panel.classList.add("hidden");
-      panel.setAttribute("aria-hidden", "true");
-    }
-    if (_lyricSearchModalCtx) {
-      _lyricSearchModalCtx.previewingLrclibId = null;
-    }
-    document.querySelectorAll("#lyric-search-results .btn-ghost").forEach(btn => {
-      btn.classList.remove("is-previewing");
-      btn.textContent = "Preview";
-      btn.style.width = "";
-    });
-  }
-
   function _closeLyricSearchModal() {
     const pop = document.getElementById("lyric-search-popover");
     if (pop) {
       pop.classList.add("hidden");
       pop.setAttribute("aria-hidden", "true");
     }
-    _closeLyricPreviewOverlay();
+    _lyricPv().close();
     _abortLyricSearchFetches();
     _clearLyricSearchAnchorHighlight();
     _clearLyricSearchFieldErrors();
@@ -1100,7 +794,7 @@
       statusEl.classList.remove("hidden");
     }
     _showLyricSearchResultsLoading(resultsEl);
-    _closeLyricPreviewOverlay();
+    _lyricPv().close();
 
     try {
       const res = await api.lyricsApi.search(
@@ -1168,14 +862,14 @@
   }
 
   async function _previewLyricRow(id) {
+    const pv = _lyricPv();
     if (_lyricSearchModalCtx && _lyricSearchModalCtx.previewingLrclibId === id) {
       return;
     }
     if (_lyricSearchModalCtx) {
       _lyricSearchModalCtx.previewingLrclibId = id;
     }
-    _teardownLyricPreviewPlayback();
-    _lyricPreviewLastActiveIdx = -1;
+    pv.teardown();
     const panel = document.getElementById("lyric-search-preview-panel");
     const prev = document.getElementById("lyric-search-preview");
     const body = document.getElementById("lyric-search-preview-body");
@@ -1194,7 +888,7 @@
       Number.isFinite(attachedId) &&
       idNum === attachedId;
     if (!prev || !body) return;
-    _renderLyricPreviewPlainBody(body, "Loading\u2026");
+    pv.renderPlain(body, "Loading\u2026");
     if (playBtn) playBtn.disabled = true;
     if (seek) seek.disabled = true;
     if (flag) {
@@ -1236,24 +930,24 @@
       }
       const data = await res.json();
       if (!data.ok) {
-        _renderLyricPreviewPlainBody(body, data.error || "Fetch failed.");
+        pv.renderPlain(body, data.error || "Fetch failed.");
         return;
       }
       const rec = data.record || {};
       const synced = (rec.syncedLyrics || "").trim();
       const plain = (rec.plainLyrics || "").trim();
       if (synced) {
-        const parsed = _parseLrcLinesForPreview(synced);
+        const parsed = pv.parseLrcLines(synced);
         if (parsed.length) {
-          _renderLyricPreviewSyncedBody(body, parsed);
+          pv.renderSynced(body, parsed);
         } else {
-          _renderLyricPreviewPlainBody(body, synced || plain || "(empty)");
+          pv.renderPlain(body, synced || plain || "(empty)");
         }
       } else {
-        _renderLyricPreviewPlainBody(body, plain || "(empty)");
+        pv.renderPlain(body, plain || "(empty)");
       }
       if (audioPath && audio) {
-        audio.src = _lyricPreviewAudioUrl(audioPath);
+        audio.src = pv.previewAudioUrl(audioPath);
         if (playBtn) playBtn.disabled = false;
         if (seek) seek.disabled = false;
       } else {
@@ -1275,7 +969,7 @@
         }
       }
     } catch (_) {
-      _renderLyricPreviewPlainBody(body, "Network error.");
+      pv.renderPlain(body, "Network error.");
     } finally {
       if (currentPreviewBtn && currentPreviewBtn.dataset.rid === String(id)) {
         currentPreviewBtn.textContent = "Preview";
@@ -1372,7 +1066,7 @@
       rf.closeAttachPopover();
     }
     _abortLyricSearchFetches();
-    _closeLyricPreviewOverlay();
+    _lyricPv().close();
     const openSession = ++_lyricOpenSession;
     const titleEl = card.querySelector(".track-status-title");
     const displayTitle = ((titleEl && titleEl.textContent) || "").trim();
@@ -1454,7 +1148,20 @@
   }
 
   function _initLyricSearchModal() {
-    _initLyricPreviewPlayer();
+    _lyricPv().init({
+      onOverlayClosed() {
+        if (_lyricSearchModalCtx) {
+          _lyricSearchModalCtx.previewingLrclibId = null;
+        }
+        document
+          .querySelectorAll("#lyric-search-results .btn-ghost")
+          .forEach((btn) => {
+            btn.classList.remove("is-previewing");
+            btn.textContent = "Preview";
+            btn.style.width = "";
+          });
+      },
+    });
     _lyricOut().bindPopoverToggles();
     const pop = document.getElementById("lyric-search-popover");
     if (!pop) return;
@@ -1475,7 +1182,7 @@
     const submitBtn = document.getElementById("lyric-search-submit");
     if (closeBtn) closeBtn.addEventListener("click", () => _closeLyricSearchModal());
     if (previewCloseBtn) {
-      previewCloseBtn.addEventListener("click", () => _closeLyricPreviewOverlay());
+      previewCloseBtn.addEventListener("click", () => _lyricPv().close());
     }
     document.addEventListener("click", (e) => {
       if (!pop || pop.classList.contains("hidden")) return;
@@ -1940,6 +1647,9 @@
         virtOnScroll: () => {
           if (_historyVirtHost) _historyVirtHost.onScroll();
         },
+        runVirtRenderPass: () => {
+          if (_historyVirtHost) _historyVirtHost.runVirtRenderPass();
+        },
       });
     }
     if (
@@ -2340,6 +2050,14 @@
             _setTrackContentRatingBadge(_tcard, ev.track_explicit);
           }
           if (_tcard.dataset.trackKey) _tsActiveDlKeys.add(_tcard.dataset.trackKey);
+          if (_historyStoreHost) {
+            _historyStoreHost.storeDbItemFromTrackStart(
+              ev,
+              evAlb,
+              _tcard,
+              coverUrl,
+            );
+          }
         }
         _hist().setDownloadChip(
           trackNo,

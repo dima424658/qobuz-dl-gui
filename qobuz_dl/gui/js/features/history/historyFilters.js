@@ -123,22 +123,12 @@
           deps.setOrder(
             orderAll.filter((k) => keyIsErrorInCurrentSession(k, stemCtx)),
           );
+          list.scrollTop = 0;
         } else {
           deps.setOrder(orderAll.slice());
         }
         deps.rebuildKeyIndex();
-        const allowed = new Set(deps.getOrder());
-        for (const [k, card] of [...cardMap]) {
-          if (!allowed.has(k)) {
-            card.remove();
-            cardMap.delete(k);
-          }
-        }
-        deps.updateVirtInnerHeight();
-        requestAnimationFrame(() => {
-          deps.virtMeasureRowH();
-          deps.virtOnScroll();
-        });
+        deps.runVirtRenderPass();
       } else {
         deps.setOrder(orderAll.slice());
         deps.rebuildKeyIndex();
@@ -174,15 +164,18 @@
         errBtn.tabIndex = allOn ? -1 : 0;
         applyFilter();
         if (list) {
-          const stickToBottom = () => {
-            list.scrollTop = list.scrollHeight;
-          };
           if (deps.isVirtActive()) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(stickToBottom);
-            });
+            if (mode === "all") {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  list.scrollTop = list.scrollHeight;
+                });
+              });
+            }
+          } else if (mode === "all") {
+            list.scrollTop = list.scrollHeight;
           } else {
-            stickToBottom();
+            list.scrollTop = 0;
           }
         }
       };

@@ -180,6 +180,51 @@
       applyHistoryDbItemToCard(card, it);
     }
 
+    function resolveCoverUrl(card, key) {
+      const img = card && card.querySelector(".track-status-art-img");
+      const fromDom = (img && img.getAttribute("src")) || "";
+      if (fromDom) return fromDom;
+      const lk = String(key || (card && card.dataset.trackKey) || "").trim();
+      if (lk) {
+        const snap = dbItemByKey.get(lk);
+        if (snap && snap.cover_url) return String(snap.cover_url);
+      }
+      return "";
+    }
+
+    function storeDbItemFromTrackStart(ev, evAlb, card, coverUrl) {
+      const tk = (card && card.dataset.trackKey) || "";
+      if (!tk) return;
+      const tEl = card.querySelector(".track-status-title");
+      const existing = dbItemByKey.get(tk) || {};
+      const cover =
+        String(coverUrl || "").trim() ||
+        resolveCoverUrl(card, tk) ||
+        String(existing.cover_url || "");
+      dbItemByKey.set(tk, {
+        ...existing,
+        track_no: String(ev.track_no || card.dataset.trackNo || existing.track_no || ""),
+        title:
+          (tEl && tEl.textContent) ||
+          String(ev.title || existing.title || ""),
+        lyric_album: evAlb || existing.lyric_album || "",
+        cover_url: cover,
+        lyric_artist: (card.dataset.lyricArtist || existing.lyric_artist || "").trim(),
+        duration_sec:
+          parseInt(card.dataset.durationSec || String(existing.duration_sec || "0"), 10) ||
+          0,
+        track_explicit:
+          card.dataset.trackExplicit === "1"
+            ? true
+            : card.dataset.trackExplicit === "0"
+              ? false
+              : existing.track_explicit != null
+                ? existing.track_explicit
+                : null,
+        download_status: existing.download_status || "downloading",
+      });
+    }
+
     function storeDbItemFromTrackResult(ev, resAlb, card) {
       const tk = (card && card.dataset.trackKey) || "";
       if (!tk) return;
@@ -188,12 +233,11 @@
       const isFailed = st === "failed";
       const isPurchase = st === "purchase_only";
       const detail = String(ev.detail || "").trim();
-      const img = card.querySelector(".track-status-art-img");
       const it = {
         track_no: String(ev.track_no || ""),
         title: (tEl && tEl.textContent) || String(ev.title || ""),
         lyric_album: resAlb || "",
-        cover_url: (img && img.getAttribute("src")) || "",
+        cover_url: resolveCoverUrl(card, tk),
         lyric_artist: (card.dataset.lyricArtist || "").trim(),
         duration_sec: parseInt(card.dataset.durationSec || "0", 10) || 0,
         audio_path: (card.dataset.audioPath || "").trim(),
@@ -265,11 +309,7 @@
       );
       if (!card) return;
       const tEl = card.querySelector(".track-status-title");
-      let coverUrl = "";
-      const img = card.querySelector(".track-status-art-img");
-      if (img && img.getAttribute("src")) {
-        coverUrl = img.getAttribute("src") || "";
-      }
+      const coverUrl = resolveCoverUrl(card, card.dataset.trackKey || "");
       const payload = {
         audio_path: ap,
         track_no: card.dataset.trackNo || String(ev.track_no || ""),
@@ -339,11 +379,7 @@
         return;
       }
       const tEl = preCard.querySelector(".track-status-title");
-      const img = preCard.querySelector(".track-status-art-img");
-      let coverUrl = "";
-      if (img && img.getAttribute("src")) {
-        coverUrl = img.getAttribute("src") || "";
-      }
+      const coverUrl = resolveCoverUrl(preCard, preCard.dataset.trackKey || "");
       const payload = {
         audio_path: GUI_PENDING + sid,
         track_no: preCard.dataset.trackNo || String(ev.track_no || ""),
@@ -477,6 +513,7 @@
       lyricAlbumForTrackEv,
       applyHistoryDbItemToCard,
       applyHistoryDbItemToNewCard,
+      storeDbItemFromTrackStart,
       storeDbItemFromTrackResult,
       updateLyricSnapForKey,
       persistDownloadHistoryAfterResult,

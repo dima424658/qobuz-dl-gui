@@ -609,8 +609,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals (`queueInternals.js`), history H1–H6 (...), replacements R1–R3 (`features/replacements/`)
-Next: lyrics L1–L2 (preview player, search modal) — absorbs popover/anchor helpers injected into attach-track popover
+Done: queue internals (`queueInternals.js`), history H1–H6 (...), replacements R1–R3 (`features/replacements/`), lyrics L1 (preview player: `lrcPreviewParser.js` + `lyricPreviewPlayer.js`)
+Next: lyrics L2 (search modal + `_previewLyricRow` fetch into feature module) — L1 preview player landed
 Defer: download runtime / SSE façade (D1)
 Optional later: feedback subsystem split, script-order cleanup
 ```
@@ -631,7 +631,27 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~70%+):** History H1–H6 and **replacements R1–R3** are landed; **`app.js`** remains a compatibility shell for download/SSE, lyrics modal, setup/auth, and settings. Next controlled step: **lyrics** L1–L2; avoid D1/SSE until then.
+**Frontend migration (~70%+):** History H1–H6 and **replacements R1–R3** are landed; **lyrics L1** (preview player) is landed. **`app.js`** remains a compatibility shell for download/SSE, lyric search modal + fetch, setup/auth, and settings. Next controlled step: **lyrics L2**; avoid D1/SSE until then.
+
+## Checkpoint L1 — Lyrics preview player extraction
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/lyrics/lrcPreviewParser.js`: assigns **`features.lyrics.internals.parseLrcLinesForPreview`** (pure timed LRC rows).
+- Added `qobuz_dl/gui/js/features/lyrics/lyricPreviewPlayer.js`: **`features.lyrics.preview`** with **`init` / `close` / `teardown`**, body render helpers, **`previewAudioUrl`**, and **`parseLrcLines`** forwarder. **`close`** runs **`deps.onOverlayClosed`** after teardown and hiding **`#lyric-search-preview-panel`**; **`init`** merges deps on each call while DOM listeners attach once (**`dataset.bound`**).
+- **`app.js`** drops inline preview playback; wires **`preview.init({ onOverlayClosed })`**, **`preview.close`** on dismiss/search-clear paths, **`preview.teardown`** when switching previews in **`_previewLyricRow`**.
+- **`index.html`**: scripts after **`lyricOutputSettings.js`**; **`app.js?v=88`**.
+
+### Validation
+
+- `node --check` on new lyric scripts + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- Lyric search modal, **`_previewLyricRow`** fetch/logic, and **`_attachLyricRow`** remain in **`app.js`** until L2.
 
 ## Checkpoint R1–R3 — Replacements (`features/replacements/`)
 
