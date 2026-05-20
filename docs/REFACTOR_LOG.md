@@ -740,8 +740,28 @@ Commit: pending
 
 ### Notes
 
-- **Still in `app.js` (D1E+):** **`#dl-btn`** click handler, **`startSSE`**, **`_sse`**.
-- Next: **D1E** start/pause click flow; **D1F** EventSource ownership.
+- **Still in `app.js` (D1F+):** **`startSSE`**, **`_sse`** EventSource ownership.
+- Next: **D1F** EventSource ownership.
+
+## Checkpoint D1E — Start/Pause click flow (`downloadStartPause.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/downloadStartPause.js`: **`QobuzGui.features.download.internals.bootstrapStartPause(deps)`** owns **`#dl-btn`** click listener, download options payload assembly, graceful pause UI, and post-start queue/progress reset. Exposes `startFromCurrentQueue`, `runStart`, `runPauseUi`, `handleClick`.
+- **`app.js`**: **`_downloadStartPauseHost`** + **`_dlStartPause()`**; bootstrap after status handler; removed ~130-line inline dl-btn listener; **`features.download.install`** **`startFromCurrentQueue`** delegates to start-pause host when present.
+- **`index.html`**: **`downloadStartPause.js`** after **`downloadStatusHandler.js`**; **`app.js?v=98`**.
+
+### Validation
+
+- `node --check` on **`downloadStartPause.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **`features.download.pause()`** still calls **`api.downloadApi.pause()`** directly (no button chrome) — intentional for programmatic pause.
+- Next: **D1F** EventSource ownership (`startSSE`, **`_sse`**).
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -750,8 +770,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket), download D1B (progress/button state), download D1C (queue purchase-only badges), download D1D (SSE status handler)
-Next: download D1E (start/pause click flow), then D1F (EventSource)
+Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A–D1E
+Next: download D1F (EventSource / startSSE)
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -771,6 +791,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1D** are landed. **`app.js`** still owns dl-btn click flow and EventSource until D1E–D1F. Next controlled step: **D1E** (start/pause click flow).
+**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1E** are landed. **`app.js`** still owns **`startSSE`** / **`_sse`** until D1F. Next controlled step: **D1F** (EventSource ownership).
 
 

@@ -52,6 +52,10 @@
     return _downloadStatusHost;
   }
 
+  function _dlStartPause() {
+    return _downloadStartPauseHost;
+  }
+
   function _getHistoryDbMap() {
     return _historyStoreHost
       ? _historyStoreHost.getDbItemByKey()
@@ -65,6 +69,8 @@
   let _downloadProgressHost = null;
   /** D1D SSE status handler host (set in `initDownload()`). */
   let _downloadStatusHost = null;
+  /** D1E Start/Pause button host (set in `initDownload()`). */
+  let _downloadStartPauseHost = null;
   /** H5 virtualization host (set in `initDownload()`). */
   let _historyVirtHost = null;
   /** H6 hydrate/persist host (set in `initDownload()`). */
@@ -978,140 +984,24 @@
             _queueHost.refreshAlbumQueueCardMetas(),
         });
     }
-
-    document.getElementById("dl-btn").addEventListener("click", async () => {
-      const dlBtn = document.getElementById("dl-btn");
-
-      // Pause if already running (graceful stop; same as /api/pause)
-      if (dlBtn.dataset.state === "downloading") {
-        dlBtn.dataset.state = "pausing";
-        const te = document.getElementById("dl-btn-text");
-        if (te) te.textContent = "Pausing…";
-        dlBtn.disabled = false;
-        dlBtn.style.opacity = "0.6";
-        dlBtn.style.cursor = "default";
-        dlBtn.style.pointerEvents = "none";
-        try {
-          await api.downloadApi.pause();
-        } catch (_) {
-          dlBtn.dataset.state = "downloading";
-          dlBtn.style.opacity = "";
-          dlBtn.style.cursor = "";
-          dlBtn.style.pointerEvents = "";
-          _dlProgress()?.setDownloadingState(true);
-        }
-        return;
-      }
-      if (dlBtn.dataset.state === "pausing") return;
-
-      // Collect URLs
-      let urls;
-      if (_queueHost.textMode) {
-        urls = document.getElementById("dl-urls").value.trim();
-      } else {
-        urls = _queueHost.urlQueue.map((q) => q.url).join("\n");
-      }
-      if (!urls) {
-        return;
-      }
-
-      const payload = {
-        urls,
-        quality: document.getElementById("dl-quality").value || null,
-        directory: document.getElementById("dl-directory").value.trim() || null,
-        embed_art: document.getElementById("dl-embed-art").checked,
-        lyrics_enabled: document.getElementById("dl-lyrics-enabled").checked,
-        lyrics_embed_metadata: document.getElementById("dl-lyrics-embed-metadata")
-          .checked,
-        og_cover: document.getElementById("dl-og-cover").checked,
-        no_cover: document.getElementById("dl-no-cover").checked,
-        albums_only: document.getElementById("dl-albums-only").checked,
-        no_m3u: document.getElementById("dl-no-m3u").checked,
-        no_fallback: document.getElementById("dl-no-fallback").checked,
-        no_db: document.getElementById("dl-no-db").checked,
-        smart_discography: document.getElementById("dl-smart-discography")
-          .checked,
-        fix_md5s: document.getElementById("dl-fix-md5s").checked,
-        no_credits: !document.getElementById("dl-digital-booklet").checked,
-        native_lang: document.getElementById("dl-native-lang").checked,
-        segmented_fallback: document.getElementById("dl-segmented-fallback")
-          .checked,
-        multiple_disc_prefix:
-          document.getElementById("dl-multiple-disc-prefix").value.trim() ||
-          null,
-        multiple_disc_one_dir: !document.getElementById("dl-multiple-disc-one-dir")
-          .checked,
-        multiple_disc_track_format:
-          document
-            .getElementById("dl-multiple-disc-track-format")
-            .value.trim() || null,
-        max_workers:
-          parseInt(document.getElementById("dl-max-workers").value, 10) || 1,
-        delay_seconds:
-          parseInt(document.getElementById("dl-delay-seconds").value, 10) || 0,
-        folder_format:
-          document.getElementById("dl-folder-format").value.trim() || null,
-        track_format:
-          document.getElementById("dl-track-format").value.trim() || null,
-        no_album_artist_tag:
-          document.getElementById("dl-tag-album-artist").checked === false,
-        no_album_title_tag:
-          document.getElementById("dl-tag-album-title").checked === false,
-        no_track_artist_tag:
-          document.getElementById("dl-tag-track-artist").checked === false,
-        no_track_title_tag:
-          document.getElementById("dl-tag-track-title").checked === false,
-        no_release_date_tag:
-          document.getElementById("dl-tag-release-date").checked === false,
-        no_media_type_tag:
-          document.getElementById("dl-tag-media-type").checked === false,
-        no_genre_tag: document.getElementById("dl-tag-genre").checked === false,
-        no_track_number_tag:
-          document.getElementById("dl-tag-track-number").checked === false,
-        no_track_total_tag:
-          document.getElementById("dl-tag-track-total").checked === false,
-        no_disc_number_tag:
-          document.getElementById("dl-tag-disc-number").checked === false,
-        no_disc_total_tag:
-          document.getElementById("dl-tag-disc-total").checked === false,
-        no_composer_tag:
-          document.getElementById("dl-tag-composer").checked === false,
-        no_explicit_tag:
-          document.getElementById("dl-tag-explicit").checked === false,
-        no_copyright_tag:
-          document.getElementById("dl-tag-copyright").checked === false,
-        no_label_tag: document.getElementById("dl-tag-label").checked === false,
-        no_upc_tag: document.getElementById("dl-tag-upc").checked === false,
-        no_isrc_tag: document.getElementById("dl-tag-isrc").checked === false,
-        tag_title_from_track_format: document.getElementById(
-          "dl-meta-title-from-track-format",
-        ).checked,
-        tag_album_from_folder_format: document.getElementById(
-          "dl-meta-album-from-folder-format",
-        ).checked,
-      };
-
-      try {
-        const res = await api.downloadApi.start(payload);
-        const data = await res.json();
-        if (data.ok) {
-          // Mark all visible queue cards as pending (keep them in the list)
-          _dlProgress()?.resetForStart({
-            urlQueued: data.queued,
-            trackTotal: _queueHost.textMode
-              ? data.queued
-              : _queueHost.calcProgressDenominatorFromQueue(),
-          });
-          _dlQueueIssues()?.clearPurchaseIssues();
-          document.querySelectorAll("#dl-queue .queue-card").forEach((c) => {
-            c.classList.add("dl-pending");
-          });
-          _dlProgress()?.setDownloadingState(true);
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    });
+    if (
+      QG.features.download &&
+      QG.features.download.internals &&
+      typeof QG.features.download.internals.bootstrapStartPause === "function"
+    ) {
+      _downloadStartPauseHost =
+        QG.features.download.internals.bootstrapStartPause({
+          getProgress: () => _downloadProgressHost,
+          getQueueIssues: () => _downloadQueueIssuesHost,
+          isTextMode: () => _queueHost.textMode,
+          getQueueUrlsText: () =>
+            _queueHost.urlQueue.map((q) => q.url).join("\n"),
+          calcProgressDenominatorFromQueue: () =>
+            _queueHost.calcProgressDenominatorFromQueue(),
+          startDownload: (payload) => api.downloadApi.start(payload),
+          pauseDownload: () => api.downloadApi.pause(),
+        });
+    }
 
     const clearTrackStatusBtn = document.getElementById("dl-clear-track-status");
     const clearHistoryConfirm = document.getElementById("dl-clear-history-confirm");
@@ -1226,7 +1116,7 @@
     ) {
       QG.features.download.install({
         init(_deps) {
-          /* noop for D1A; real bindings come in D1E */
+          /* click listener bound in bootstrapStartPause */
         },
         startSSE,
         handleStatusEvent(ev) {
@@ -1240,7 +1130,10 @@
           }
         },
         startFromCurrentQueue() {
-          /* dl-btn start path — stays inline until D1E */
+          const sp = _downloadStartPauseHost;
+          if (sp && typeof sp.startFromCurrentQueue === "function") {
+            return sp.startFromCurrentQueue();
+          }
         },
         pause() {
           const dlApi = api && api.downloadApi;
