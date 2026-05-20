@@ -721,8 +721,27 @@ Commit: pending
 
 ### Notes
 
-- **Still in `app.js` (D1D+):** full **`window._handleDlStatus`** body (now thinner but still inline), **`#dl-btn`** handler, **`startSSE`**, **`_sse`**.
-- Next: **D1D** SSE status handler extraction; D1E start/pause click flow; D1F EventSource ownership.
+- **Still in `app.js` (D1D+):** **`#dl-btn`** handler, **`startSSE`**, **`_sse`** (handler moved in D1D).
+
+## Checkpoint D1D — SSE status handler (`downloadStatusHandler.js`)
+
+Date: 2026-05-19  
+Commit: pending
+
+### What changed
+
+- Added `qobuz_dl/gui/js/features/download/downloadStatusHandler.js`: **`QobuzGui.features.download.internals.bootstrapStatusHandler(deps)`** owns full SSE **`status`** dispatch. Sets **`window._handleDlStatus`** for backward compatibility.
+- **`app.js`**: **`_downloadStatusHost`** + **`_dlStatus()`**; bootstrap after history hydrate; removed ~320-line inline handler; **`features.download.install`** **`handleStatusEvent`** delegates to status host when present.
+- **`index.html`**: **`downloadStatusHandler.js`** after **`queueIssueBadges.js`**; **`app.js?v=97`**.
+
+### Validation
+
+- `node --check` on **`downloadStatusHandler.js`** + **`app.js`**; **`python -m unittest discover -s tests`**.
+
+### Notes
+
+- **Still in `app.js` (D1E+):** **`#dl-btn`** click handler, **`startSSE`**, **`_sse`**.
+- Next: **D1E** start/pause click flow; **D1F** EventSource ownership.
 
 ## Deferred architecture (yellow flags, post–checkpoint 20)
 
@@ -731,8 +750,8 @@ These items are **intentionally not done** yet; captured so we do not mistake in
 ### Roadmap state (2026)
 
 ```text
-Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket), download D1B (progress/button state), download D1C (queue purchase-only badges)
-Next: download D1D (SSE status handler), then D1E–D1F
+Done: queue internals, history H1–H6, replacements R1–R3, lyrics L1–L2, download D1A (façade plug socket), download D1B (progress/button state), download D1C (queue purchase-only badges), download D1D (SSE status handler)
+Next: download D1E (start/pause click flow), then D1F (EventSource)
 Optional later: feedback subsystem split, script-order cleanup
 ```
 
@@ -752,6 +771,6 @@ Optional later: feedback subsystem split, script-order cleanup
 - Today **`updateBanner.js` runs before `core/namespace.js`**; it only needs `window.QobuzGui` from `client.js`, so behaviour is OK.
 - **Stylistically preferred eventual order**: `api/client.js` → `core/namespace.js` → `core/*` → `api/extensions.js` → `ui/*` → `features/*` → `app.js`. Only reshuffle when deliberately testing script order (not a drive-by refactor).
 
-**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1C** are landed. **`app.js`** still owns SSE handler and dl-btn click flow until D1D–D1F. Next controlled step: **D1D** (SSE status handler body).
+**Frontend migration (~85%+):** History H1–H6, **replacements R1–R3**, **lyrics L1–L2**, and **download D1A–D1D** are landed. **`app.js`** still owns dl-btn click flow and EventSource until D1E–D1F. Next controlled step: **D1E** (start/pause click flow).
 
 

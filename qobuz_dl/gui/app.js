@@ -48,6 +48,10 @@
     return _downloadProgressHost;
   }
 
+  function _dlStatus() {
+    return _downloadStatusHost;
+  }
+
   function _getHistoryDbMap() {
     return _historyStoreHost
       ? _historyStoreHost.getDbItemByKey()
@@ -59,6 +63,8 @@
   let _downloadQueueIssuesHost = null;
   /** D1B progress bar + Start/Pause button host (set in `initDownload()`). */
   let _downloadProgressHost = null;
+  /** D1D SSE status handler host (set in `initDownload()`). */
+  let _downloadStatusHost = null;
   /** H5 virtualization host (set in `initDownload()`). */
   let _historyVirtHost = null;
   /** H6 hydrate/persist host (set in `initDownload()`). */
@@ -925,324 +931,53 @@
       }
     };
 
-    // Called by SSE 'status' events
-    window._handleDlStatus = function (ev) {
-      if (ev.type === "total_tracks") {
-        _dlProgress()?.onTotalTracks(ev.count);
-      } else if (ev.type === "url_start") {
-        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
-        if (card) {
-          card.classList.remove("dl-pending");
-          card.classList.add("dl-active");
-        }
-      } else if (ev.type === "track_start") {
-        let trackNo = "";
-        let title = "";
-        let coverUrl = "";
-        if (ev.track_no != null && String(ev.track_no).trim() !== "") {
-          trackNo = String(ev.track_no).trim();
-          title = String(ev.title || "").trim();
-          coverUrl = String(ev.cover_url || "").trim();
-        } else {
-          const parsed = _parseTrackRef("", ev.title || "");
-          trackNo = parsed.trackNo;
-          title = parsed.title;
-        }
-        const evAlb =
-          ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
-            ? String(ev.lyric_album).trim()
-            : "";
-        const _tcard = _hist().ensureTrackCard(
-          trackNo,
-          title,
-          true,
-          coverUrl,
-          evAlb,
-        );
-        if (_tcard) {
-          if (ev.lyric_artist != null && String(ev.lyric_artist).trim() !== "") {
-            _tcard.dataset.lyricArtist = String(ev.lyric_artist).trim();
-          }
-          if (evAlb) _tcard.dataset.lyricAlbum = evAlb;
-          if (ev.duration_sec != null && String(ev.duration_sec).trim() !== "") {
-            const ds = parseInt(String(ev.duration_sec), 10);
-            if (!Number.isNaN(ds)) _tcard.dataset.durationSec = String(ds);
-          }
-          if (typeof ev.track_explicit === "boolean") {
-            _tcard.dataset.trackExplicit = ev.track_explicit ? "1" : "0";
-            _setTrackContentRatingBadge(_tcard, ev.track_explicit);
-          }
-          if (_tcard.dataset.trackKey) _tsActiveDlKeys.add(_tcard.dataset.trackKey);
-          if (_historyStoreHost) {
-            _historyStoreHost.storeDbItemFromTrackStart(
-              ev,
-              evAlb,
-              _tcard,
-              coverUrl,
-            );
-          }
-          if (!_cardHasResolvedRealAudio(_tcard)) {
-            _hist().setDownloadChip(
-          trackNo,
-          title,
-          "downloading",
-          "",
-          undefined,
-          evAlb,
-        );
-          }
-        }
-        _dlProgress()?.updateProgress();
-        _hist().applyFilter();
-      } else if (ev.type === "track_download_progress") {
-        const pa =
-          ev.lyric_album != null && String(ev.lyric_album).trim() !== ""
-            ? String(ev.lyric_album).trim()
-            : "";
-        _updateTrackDownloadProgress(
-          ev.track_no,
-          ev.title,
-          ev.received,
-          ev.total,
-          pa,
-        );
-      } else if (ev.type === "track_result") {
-        const resAlb = _lyricAlbumForTrackEv(ev);
-        const qurl = String(ev.source_url || "").trim();
-        const slotProgKey = _trackKey(ev.track_no, ev.title, resAlb);
-        _dlProgress()?.recordTrackFinished(slotProgKey);
-        const st = String(ev.status || "").toLowerCase();
-        const isFailed = st === "failed";
-        const isPurchase = st === "purchase_only";
-        const detail = String(ev.detail || "").trim();
-        const ap = String(ev.audio_path || "").trim();
-        const sidTrim = String(ev.slot_track_id || "").trim();
-        const ridTrim = String(ev.release_album_id || "").trim();
-        const preCard = _hist().ensureTrackCard(
-          ev.track_no,
-          ev.title,
-          false,
-          undefined,
-          resAlb,
-        );
-        if (preCard && qurl) {
-          preCard.dataset.queueSourceUrl = qurl;
-        }
-        if (preCard && sidTrim) {
-          preCard.dataset.slotTrackId = sidTrim;
-        }
-        if (preCard && ridTrim) {
-          preCard.dataset.releaseAlbumId = ridTrim;
-        }
-        const skipTerminalDowngrade =
-          preCard &&
-          (isPurchase || isFailed) &&
-          _cardHasResolvedRealAudio(preCard);
-        if (
-          preCard &&
-          sidTrim &&
-          ridTrim &&
-          (isPurchase || isFailed) &&
-          !skipTerminalDowngrade
-        ) {
-          preCard.dataset.attachSearchEligible = "1";
-        }
-        if (preCard && ap && !skipTerminalDowngrade) {
-          preCard.dataset.audioPath = ap;
-          _tsRegisterAudioPathAlbum(ap, resAlb);
-        }
-        if (isPurchase && detail && !skipTerminalDowngrade) {
-          _hist().setDownloadChip(
-            ev.track_no,
-            ev.title,
-            "Album Purchase Only",
-            "failed",
-            {
-              href: detail,
-              titleAttr:
-                _dlQueueIssues()?.tips?.purchaseQueue ||
-                "Open album on Qobuz to purchase (full album required for these tracks)",
-              slotTrackId: sidTrim,
-              releaseAlbumId: ridTrim,
-            },
-            resAlb,
-          );
-        } else if (!skipTerminalDowngrade) {
-          _hist().setDownloadChip(
-            ev.track_no,
-            ev.title,
-            isFailed ? "failed" : "downloaded",
-            isFailed ? "failed" : "done",
-            undefined,
-            resAlb,
-          );
-        } else {
-          _hist().setDownloadChip(
-            ev.track_no,
-            ev.title,
-            "downloaded",
-            "done",
-            undefined,
-            resAlb,
-          );
-          if (preCard.dataset.resolvedBy === "search") {
-            preCard.dataset.attachSearchEligible = "1";
-          } else if (preCard.dataset.resolvedBy === "placeholder") {
-            preCard.dataset.attachSearchEligible = "1";
-          }
-          if (_replacementResolutionHost) {
-            _replacementResolutionHost.syncResolutionButtonStates(preCard);
-          }
-        }
-        if (st === "downloaded" && preCard) {
-          if (ev.substitute_attach === true) {
-            preCard.dataset.attachSearchEligible = "1";
-            // Mark resolved-by-search and delete any prior .missing.txt.
-            const prevPlaceholderPath = (preCard.dataset.missingPlaceholderPath || "").trim();
-            if (prevPlaceholderPath) {
-              api.replacementApi.deleteResolutionFile({ file_path: prevPlaceholderPath }).catch(() => {});
-              delete preCard.dataset.missingPlaceholderPath;
-            }
-            preCard.dataset.resolvedBy = "search";
+    if (
+      QG.features.download &&
+      QG.features.download.internals &&
+      typeof QG.features.download.internals.bootstrapStatusHandler === "function"
+    ) {
+      _downloadStatusHost =
+        QG.features.download.internals.bootstrapStatusHandler({
+          getProgress: () => _downloadProgressHost,
+          getQueueIssues: () => _downloadQueueIssuesHost,
+          history: () => _hist(),
+          parseTrackRef: _parseTrackRef,
+          setTrackContentRatingBadge: _setTrackContentRatingBadge,
+          cardHasResolvedRealAudio: _cardHasResolvedRealAudio,
+          updateTrackDownloadProgress: _updateTrackDownloadProgress,
+          lyricAlbumForTrackEv: _lyricAlbumForTrackEv,
+          trackKey: _trackKey,
+          normalizeTrackNo: _normalizeTrackNo,
+          normalizeTrackTitle: _normalizeTrackTitle,
+          registerAudioPathAlbum: _tsRegisterAudioPathAlbum,
+          addActiveDlKey: (key) => _tsActiveDlKeys.add(key),
+          removeActiveDlKey: (key) => _tsActiveDlKeys.delete(key),
+          getHistoryStore: () => _historyStoreHost,
+          syncResolutionButtonStates: (card) => {
             if (_replacementResolutionHost) {
-              _replacementResolutionHost.syncResolutionButtonStates(preCard);
+              _replacementResolutionHost.syncResolutionButtonStates(card);
             }
-          } else if (ap.toLowerCase().endsWith(".missing.txt")) {
-            preCard.dataset.attachSearchEligible = "1";
-            preCard.dataset.resolvedBy = "placeholder";
-            if (_replacementResolutionHost) {
-              _replacementResolutionHost.syncResolutionButtonStates(preCard);
+          },
+          deleteResolutionFile: (opts) => {
+            const ra = api && api.replacementApi;
+            if (ra && typeof ra.deleteResolutionFile === "function") {
+              return ra.deleteResolutionFile(opts);
             }
-          } else {
-            const rb = (preCard.dataset.resolvedBy || "").trim();
-            if (rb === "search" || rb === "placeholder") {
-              preCard.dataset.attachSearchEligible = "1";
-              if (_replacementResolutionHost) {
-                _replacementResolutionHost.syncResolutionButtonStates(preCard);
-              }
-          } else {
-            delete preCard.dataset.attachSearchEligible;
-            }
-          }
-        }
-        if (st === "downloaded" && ap) {
-          if (_historyStoreHost) {
-            _historyStoreHost.persistDownloadHistoryAfterResult(ev, resAlb);
-          }
-        } else if (
-          preCard &&
-          sidTrim &&
-          ridTrim &&
-          ((isPurchase && detail) || isFailed) &&
-          !skipTerminalDowngrade
-        ) {
-          if (_historyStoreHost) {
-            _historyStoreHost.persistPendingSlotDownloadHistory(
-              ev,
-              preCard,
-              resAlb,
-            );
-          }
-        }
-        if (preCard) {
-          if (_historyStoreHost) {
-            _historyStoreHost.storeDbItemFromTrackResult(ev, resAlb, preCard);
-          }
-          if (preCard.dataset.trackKey) {
-            _tsActiveDlKeys.delete(preCard.dataset.trackKey);
-          }
-          if (_historyVirtHost) _historyVirtHost.onScroll();
-        }
-        const pk = _dlQueueIssues()?.purchaseIssueSlotKey(ev, resAlb);
-        if (isPurchase && qurl) {
-          _dlQueueIssues()?.markPurchaseOnly(qurl, pk);
-        } else if (st === "downloaded" && qurl) {
-          _dlQueueIssues()?.resolvePurchaseOnly(qurl, pk);
-        }
-        _dlProgress()?.updateProgress();
-        _hist().applyFilter();
-        _queueHost.refreshAlbumQueueCardMetas();
-      } else if (ev.type === "track_lyrics") {
-        let albLy = "";
-        const apEv = String(ev.audio_path || "").trim();
-        if (_historyStoreHost) {
-          albLy = _historyStoreHost.lyricAlbumForAudioPath(apEv);
-        }
-        if (!albLy && apEv) {
-          const cards = document.querySelectorAll(
-            "#dl-track-status .track-status-card",
-          );
-          for (let i = 0; i < cards.length; i++) {
-            if ((cards[i].dataset.audioPath || "").trim() === apEv) {
-              albLy = (cards[i].dataset.lyricAlbum || "").trim();
-              break;
-            }
-          }
-        }
-        if (!albLy) albLy = _lyricAlbumForTrackEv(ev);
-        _hist().setLyricsChip(
-          ev.track_no,
-          ev.title,
-          ev.lyric_type || "none",
-          ev.confidence,
-          albLy,
-          ev.provider,
-          ev.lyric_destination || "",
-        );
-        const lk = _trackKey(
-          _normalizeTrackNo(ev.track_no),
-          _normalizeTrackTitle(ev.title || ""),
-          albLy,
-        );
-        if (
-          _historyStoreHost &&
-          _historyStoreHost.updateLyricSnapForKey(lk, ev)
-        ) {
-          _hist().applyFilter();
-        }
-      } else if (ev.type === "url_done") {
-        _dlProgress()?.onUrlDone();
-        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
-        if (card) {
-          card.classList.remove("dl-active", "dl-pending");
-          const qi = _queueHost.urlQueue.find((x) => x.url === ev.url);
-          const stayAlbum =
-            qi != null && _queueHost.albumQueueItemNeedsToStayVisible(qi);
-          if (
-            card.querySelector(".dl-purchase-badge") ||
-            stayAlbum
-          ) {
-            card.classList.add("dl-error");
-          } else {
-            card.classList.add("dl-done");
-            setTimeout(() => _queueHost.removeFromQueue(ev.url, card), 1400);
-          }
-        }
-      } else if (ev.type === "url_error") {
-        _dlProgress()?.onUrlError();
-        const card = _dlQueueIssues()?.findCardByUrl(ev.url);
-        if (card) {
-          _dlQueueIssues()?.applyUrlErrorBadge(card, ev);
-        }
-      } else if (ev.type === "dl_complete") {
-        _dlProgress()?.finalizeOnDlComplete(ev);
-        // Reset cards still marked as active once the graceful stop settles
-        if (ev.cancelled || ev.paused) {
-          document
-            .querySelectorAll(
-              "#dl-queue .queue-card.dl-active, #dl-queue .queue-card.dl-pending",
-            )
-            .forEach((c) => c.classList.remove("dl-active", "dl-pending"));
-        }
-        // Clear the pausing-state inline styles before restoring button
-        const dlBtn = document.getElementById("dl-btn");
-        dlBtn.style.opacity = "";
-        dlBtn.style.cursor = "";
-        dlBtn.style.pointerEvents = "";
-        _dlProgress()?.setDownloadingState(false);
-        _queueHost.refreshAlbumQueueCardMetas();
-      }
-    };
+            return Promise.resolve(null);
+          },
+          historyVirtOnScroll: () => {
+            if (_historyVirtHost) _historyVirtHost.onScroll();
+          },
+          findQueueItemByUrl: (url) =>
+            _queueHost.urlQueue.find((x) => x.url === url) || null,
+          albumQueueItemNeedsToStayVisible: (qi) =>
+            _queueHost.albumQueueItemNeedsToStayVisible(qi),
+          removeFromQueue: (url, card) =>
+            _queueHost.removeFromQueue(url, card),
+          refreshAlbumQueueCardMetas: () =>
+            _queueHost.refreshAlbumQueueCardMetas(),
+        });
+    }
 
     document.getElementById("dl-btn").addEventListener("click", async () => {
       const dlBtn = document.getElementById("dl-btn");
@@ -1495,6 +1230,11 @@
         },
         startSSE,
         handleStatusEvent(ev) {
+          const status = _downloadStatusHost;
+          if (status && typeof status.handleStatus === "function") {
+            status.handleStatus(ev);
+            return;
+          }
           if (typeof window._handleDlStatus === "function") {
             window._handleDlStatus(ev);
           }
