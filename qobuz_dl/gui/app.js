@@ -458,9 +458,10 @@
         virtOnScroll: () => {
           if (_historyVirtHost) _historyVirtHost.onScroll();
         },
-        runVirtRenderPass: () => {
-          if (_historyVirtHost) _historyVirtHost.runVirtRenderPass();
+        runVirtRenderPass: (opts) => {
+          if (_historyVirtHost) _historyVirtHost.runVirtRenderPass(opts);
         },
+        scrollContainerAtBottom: _scrollContainerAtBottom,
       });
     }
     if (

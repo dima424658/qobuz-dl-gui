@@ -139,7 +139,16 @@
     btn.classList.toggle("sidebar-theme-switch--light", isLight);
   }
 
-  function applyTheme(theme) {
+  function persistThemeRemote(theme) {
+    const api = window.QobuzGui && window.QobuzGui.api;
+    if (!api || !api.themeApi || typeof api.themeApi.save !== "function") {
+      return Promise.resolve();
+    }
+    return api.themeApi.save(theme).catch(() => {});
+  }
+
+  function applyTheme(theme, opts) {
+    const options = opts || {};
     const next = theme === "light" ? "light" : "dark";
     const root = document.documentElement;
     if (next === "light") {
@@ -153,6 +162,9 @@
     } catch (_) {}
     syncToggleUi(next);
     refreshThemeColoredChips();
+    if (options.persist !== false) {
+      void persistThemeRemote(next);
+    }
     return next;
   }
 
@@ -160,12 +172,31 @@
     return applyTheme(getTheme() === "light" ? "dark" : "light");
   }
 
+  async function syncThemeFromServer() {
+    const api = window.QobuzGui && window.QobuzGui.api;
+    if (!api || !api.themeApi || typeof api.themeApi.get !== "function") {
+      return getTheme();
+    }
+    try {
+      const res = await api.themeApi.get();
+      const data = await res.json().catch(() => ({}));
+      if (data.ok && (data.theme === "light" || data.theme === "dark")) {
+        return applyTheme(data.theme, { persist: false });
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return getTheme();
+  }
+
   ui.theme = {
     init() {
-      applyTheme(getStoredTheme());
+      applyTheme(getStoredTheme(), { persist: false });
       const btn = document.getElementById("theme-toggle");
-      if (!btn) return;
-      btn.addEventListener("click", toggleTheme);
+      if (btn) {
+        btn.addEventListener("click", toggleTheme);
+      }
+      void syncThemeFromServer();
     },
     apply: applyTheme,
     get: getTheme,

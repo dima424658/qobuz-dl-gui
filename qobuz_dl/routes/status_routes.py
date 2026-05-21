@@ -73,6 +73,7 @@ def _status_config_data(config_file: str) -> dict:
                 "tag_album_from_folder_format",
                 "true",
             ),
+            "gui_theme": defaults.get("gui_theme", "dark"),
         }
     except Exception:
         return {}

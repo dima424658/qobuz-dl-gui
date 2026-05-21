@@ -12,7 +12,7 @@ import webbrowser
 
 from typing import Optional
 
-from flask import Flask, send_from_directory
+from flask import Flask, Response, send_from_directory
 
 from qobuz_dl.app.events import GuiEventHub, GuiQueueHandler
 from qobuz_dl.app.path_security import (
@@ -26,6 +26,7 @@ from qobuz_dl.config_paths import (
     GUI_FEEDBACK_HISTORY_JSON,
     QOBUZ_DB,
 )
+from qobuz_dl.gui_preferences import read_gui_theme
 from qobuz_dl.routes.auth_routes import register_auth_routes
 from qobuz_dl.routes.config_routes import register_config_routes
 from qobuz_dl.routes.download_routes import register_download_routes
@@ -156,7 +157,15 @@ def _set_qobuz(qobuz):
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return send_from_directory(GUI_DIR, "index.html")
+    index_path = os.path.join(GUI_DIR, "index.html")
+    theme = read_gui_theme(lambda: CONFIG_FILE, lambda: CONFIG_PATH)
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            html = fh.read()
+    except OSError:
+        return send_from_directory(GUI_DIR, "index.html")
+    html = html.replace("__QOBUZ_GUI_THEME__", theme)
+    return Response(html, mimetype="text/html; charset=utf-8")
 
 
 @app.route("/gui/<path:filename>")
@@ -297,6 +306,8 @@ register_utility_routes(
     qobuz_db=lambda: QOBUZ_DB,
     audio_path_allowed_for_lyrics_attach=_audio_path_allowed_for_lyrics_attach,
     reveal_file_in_os=_reveal_file_in_os,
+    config_file=lambda: CONFIG_FILE,
+    config_path=lambda: CONFIG_PATH,
 )
 
 

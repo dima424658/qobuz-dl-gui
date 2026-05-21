@@ -103,6 +103,15 @@
     },
   };
 
+  api.themeApi = {
+    get() {
+      return fetch("/api/gui/theme");
+    },
+    save(theme) {
+      return jsonPost("/api/gui/theme", { theme });
+    },
+  };
+
   function lyricDownloadOptionsFromUi() {
     const o = {};
     const lrc = document.getElementById("dl-lyrics-enabled");

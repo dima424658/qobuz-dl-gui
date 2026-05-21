@@ -108,10 +108,8 @@
 
       if (n === 0) {
         if (trackBadge) trackBadge.remove();
-        if (!urlFailedBadge && !stayAlbum) {
+        if (!urlFailedBadge) {
           card.classList.remove("dl-error");
-        } else if (stayAlbum && !urlFailedBadge) {
-          card.classList.add("dl-error");
         }
         const stillActive =
           card.classList.contains("dl-active") ||

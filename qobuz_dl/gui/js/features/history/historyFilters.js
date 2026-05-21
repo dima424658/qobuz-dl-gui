@@ -125,10 +125,24 @@
       }
     }
 
+    function scrollHistoryListToBottom(list) {
+      if (!list) return;
+      if (deps.isVirtActive()) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            list.scrollTop = list.scrollHeight;
+          });
+        });
+      } else {
+        list.scrollTop = list.scrollHeight;
+      }
+    }
+
     function applyFilter() {
       if (deps.getSkipHistoryFilterApply()) return;
       const stemCtx = computeErrorStemContext();
       const list = document.getElementById("dl-track-status");
+      const stick = list ? deps.scrollContainerAtBottom(list) : false;
       const orderAll = deps.getOrderAll();
       const cardMap = deps.getCardMap();
 
@@ -137,12 +151,11 @@
           deps.setOrder(
             orderAll.filter((k) => keyIsErrorInCurrentSession(k, stemCtx)),
           );
-          list.scrollTop = 0;
         } else {
           deps.setOrder(orderAll.slice());
         }
         deps.rebuildKeyIndex();
-        deps.runVirtRenderPass();
+        deps.runVirtRenderPass({ stickToBottom: stick });
       } else {
         deps.setOrder(orderAll.slice());
         deps.rebuildKeyIndex();
@@ -166,6 +179,9 @@
             card.setAttribute("aria-hidden", show ? "false" : "true");
           }
         }
+        if (list && stick) {
+          list.scrollTop = list.scrollHeight;
+        }
       }
       updateErrorHistoryCountBadge(stemCtx);
     }
@@ -185,21 +201,7 @@
         allBtn.tabIndex = allOn ? 0 : -1;
         errBtn.tabIndex = allOn ? -1 : 0;
         applyFilter();
-        if (list) {
-          if (deps.isVirtActive()) {
-            if (mode === "all") {
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  list.scrollTop = list.scrollHeight;
-                });
-              });
-            }
-          } else if (mode === "all") {
-            list.scrollTop = list.scrollHeight;
-          } else {
-            list.scrollTop = 0;
-          }
-        }
+        scrollHistoryListToBottom(list);
       };
       allBtn.addEventListener("click", () => applyMode("all"));
       errBtn.addEventListener("click", () => applyMode("errors"));

@@ -4,6 +4,12 @@ from pathlib import Path
 
 from flask import Response, jsonify, request
 
+from qobuz_dl.gui_preferences import (
+    normalize_gui_theme,
+    read_gui_theme,
+    write_gui_theme,
+)
+
 
 def _resolve(value):
     return value() if callable(value) else value
@@ -16,7 +22,21 @@ def register_utility_routes(
     qobuz_db,
     audio_path_allowed_for_lyrics_attach,
     reveal_file_in_os,
+    config_file=None,
+    config_path=None,
 ) -> None:
+    @app.route("/api/gui/theme", methods=["GET", "POST"])
+    def api_gui_theme():
+        if config_file is None or config_path is None:
+            return jsonify({"ok": False, "error": "Theme storage unavailable"}), 500
+        if request.method == "GET":
+            theme = read_gui_theme(config_file, config_path)
+            return jsonify({"ok": True, "theme": theme})
+        data = request.json or {}
+        theme = normalize_gui_theme(data.get("theme"))
+        write_gui_theme(config_file, config_path, theme)
+        return jsonify({"ok": True, "theme": theme})
+
     @app.route("/api/browse_folder", methods=["POST"])
     def api_browse_folder():
         try:

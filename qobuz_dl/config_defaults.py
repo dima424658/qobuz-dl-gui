@@ -54,3 +54,4 @@ def apply_common_defaults(defaults, *, no_database: str) -> None:
         defaults[key] = "false"
     defaults["tag_title_from_track_format"] = "true"
     defaults["tag_album_from_folder_format"] = "true"
+    defaults["gui_theme"] = "dark"

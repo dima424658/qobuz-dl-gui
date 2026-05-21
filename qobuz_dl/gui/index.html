@@ -12,10 +12,23 @@
     <script>
         (function () {
             try {
-                if (localStorage.getItem("qobuz_dl_gui_theme_v1") === "light") {
+                var serverTheme = "__QOBUZ_GUI_THEME__";
+                var theme = "dark";
+                if (serverTheme === "light" || serverTheme === "dark") {
+                    theme = serverTheme;
+                } else {
+                    try {
+                        var stored = localStorage.getItem("qobuz_dl_gui_theme_v1");
+                        if (stored === "light" || stored === "dark") theme = stored;
+                    } catch (e) { }
+                }
+                if (theme === "light") {
                     document.documentElement.setAttribute("data-theme", "light");
                     document.documentElement.style.colorScheme = "light";
                 }
+                try {
+                    localStorage.setItem("qobuz_dl_gui_theme_v1", theme);
+                } catch (e) { }
             } catch (e) { }
         })();
     </script>
@@ -1381,7 +1394,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/ui/globalTooltip.js?v=1"></script>
     <script src="/gui/js/ui/textFieldContextMenu.js?v=1"></script>
     <script src="/gui/js/ui/donationPopover.js?v=1"></script>
-    <script src="/gui/js/ui/theme.js?v=3"></script>
+    <script src="/gui/js/ui/theme.js?v=4"></script>
     <script src="/gui/js/ui/collapses.js?v=1"></script>
     <script src="/gui/js/ui/resetButtons.js?v=1"></script>
     <script src="/gui/js/ui/popoverPositioning.js?v=1"></script>
@@ -1403,7 +1416,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/features/queue/queueController.js?v=1"></script>
     <script src="/gui/js/features/download/downloadController.js?v=1"></script>
     <script src="/gui/js/features/download/downloadProgress.js?v=1"></script>
-    <script src="/gui/js/features/download/queueIssueBadges.js?v=1"></script>
+    <script src="/gui/js/features/download/queueIssueBadges.js?v=2"></script>
     <script src="/gui/js/features/download/downloadStatusHandler.js?v=1"></script>
     <script src="/gui/js/features/download/downloadStartPause.js?v=1"></script>
     <script src="/gui/js/features/download/sseClient.js?v=1"></script>
@@ -1411,7 +1424,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/features/history/historyController.js?v=1"></script>
     <script src="/gui/js/features/history/historyVirtualization.js?v=4"></script>
     <script src="/gui/js/features/history/historyHydratePersist.js?v=3"></script>
-    <script src="/gui/js/features/history/historyFilters.js?v=4"></script>
+    <script src="/gui/js/features/history/historyFilters.js?v=5"></script>
     <script src="/gui/js/features/history/historyCardRendering.js?v=2"></script>
     <script src="/gui/js/features/history/clearHistoryConfirm.js?v=1"></script>
     <script src="/gui/js/features/replacements/replacementController.js?v=1"></script>

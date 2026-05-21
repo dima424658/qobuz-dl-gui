@@ -212,12 +212,17 @@
       });
     }
 
-    function runVirtRenderPass() {
+    function runVirtRenderPass(opts) {
+      const stickToBottom = Boolean(opts && opts.stickToBottom);
+      const list = document.getElementById("dl-track-status");
       updateVirtInnerHeight();
       requestAnimationFrame(() => {
         render();
         measureRowH();
         render();
+        if (stickToBottom && list) {
+          list.scrollTop = list.scrollHeight;
+        }
       });
     }
 
