@@ -7,10 +7,22 @@
   "use strict";
   const g = window.QobuzGui;
   const api = g.api;
+  const ti = g.core.trackIdentity;
   const rroot = (g.features.replacements = g.features.replacements || {});
 
   function bootstrapAttachTrackPopover(deps) {
     let anchorCard = null;
+    const pendingPrefix =
+      (g.core && g.core.constants && g.core.constants.GUI_PENDING_AUDIO_PREFIX) ||
+      "__GUI_PENDING__:slot:";
+
+    function resolveAttachArtist(card) {
+      const ti = g.core && g.core.trackIdentity;
+      if (ti && typeof ti.resolveHistoryArtistForCard === "function") {
+        return ti.resolveHistoryArtistForCard(card, pendingPrefix);
+      }
+      return (card && card.dataset.lyricArtist) || "";
+    }
 
     const formatAttachDur = deps.formatAttachDur;
     const formatLyricDeltaSec = deps.formatLyricDeltaSec;
@@ -262,11 +274,15 @@
       return document.getElementById("attach-track-status");
     }
 
-    async function submitAttachSubstitute(subId) {
+    async function submitAttachSubstitute(track) {
       const card = anchorCard;
       const sid = ((card && card.dataset.slotTrackId) || "").trim();
       const albumId = ((card && card.dataset.releaseAlbumId) || "").trim();
+      const subId = String((track && track.id) || "").trim();
       if (!sid || !subId) return;
+      if (ti && typeof ti.applySubstituteLyricMetaToCard === "function") {
+        ti.applySubstituteLyricMetaToCard(card, track);
+      }
       try {
         const payload = {
           slot_track_id: sid,
@@ -282,6 +298,9 @@
           qs = qUrlFn(sid) || "";
         }
         if (qs) payload.queue_source_url = qs;
+        if (typeof api.replacementApi.lyricDownloadOptionsFromUi === "function") {
+          Object.assign(payload, api.replacementApi.lyricDownloadOptionsFromUi());
+        }
         const res = await api.replacementApi.downloadAttachTrack(payload);
         const data = await res.json();
         if (!data.ok) {
@@ -317,7 +336,7 @@
       const tEl = card.querySelector(".track-status-title");
       const displayTitle = ((tEl && tEl.textContent) || "").trim();
       ti.value = deps.lyricSearchTitleFromDisplay(displayTitle);
-      ar.value = (card.dataset.lyricArtist || "").trim();
+      ar.value = resolveAttachArtist(card);
       pop.classList.remove("hidden");
       pop.setAttribute("aria-hidden", "false");
       requestAnimationFrame(() => position());
@@ -369,7 +388,7 @@
         const tElA = card.querySelector(".track-status-title");
         const displayAnchor = ((tElA && tElA.textContent) || "").trim();
         const anchorTitle = deps.lyricSearchTitleFromDisplay(displayAnchor);
-        const anchorArtist = (card.dataset.lyricArtist || "").trim();
+        const anchorArtist = resolveAttachArtist(card);
         const anchorDur =
           parseInt(String(card.dataset.durationSec || "0"), 10) || 0;
         const scored = [];
@@ -413,7 +432,7 @@
             resultsEl.appendChild(
               createAttachTrackSearchRow(t, mp, anchorDur, async (btn) => {
                 btn.disabled = true;
-                await submitAttachSubstitute(String(t.id || ""));
+                await submitAttachSubstitute(t);
                 btn.disabled = false;
               }),
             );

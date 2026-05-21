@@ -634,6 +634,47 @@ class LyricsTests(unittest.TestCase):
             out = lyrics._lrclib_search_best(track, timeout_sec=2.0)
         self.assertIsNone(out)
 
+    def test_title_version_compatible_allows_shared_remastered(self):
+        self.assertTrue(
+            lyrics._title_version_compatible(
+                "My Big Mouth (Remastered)",
+                "My Big Mouth (Remastered)",
+            )
+        )
+        self.assertTrue(
+            lyrics._title_version_compatible(
+                "My Big Mouth (Remastered)",
+                "My Big Mouth - Remastered",
+            )
+        )
+        self.assertTrue(
+            lyrics._title_version_compatible(
+                "My Big Mouth (Remastered)",
+                "My Big Mouth",
+            )
+        )
+
+    def test_lrclib_search_matches_remastered_album_track(self):
+        track = {
+            "title": "My Big Mouth (Remastered)",
+            "performer": {"name": "Oasis"},
+            "album": {"title": "Be Here Now (Deluxe Remastered Edition)"},
+            "duration": 311,
+        }
+        row = {
+            "id": 9002,
+            "trackName": "My Big Mouth (Remastered)",
+            "artistName": "Oasis",
+            "albumName": "Be Here Now (Remastered)",
+            "duration": 311,
+            "syncedLyrics": "[00:01.00]line one\n[00:05.00]line two\n",
+            "plainLyrics": "",
+        }
+        with patch("qobuz_dl.lyrics._lrclib_search_raw", return_value=[row]):
+            out = lyrics._lrclib_search_best(track, timeout_sec=2.0)
+        self.assertIsNotNone(out)
+        self.assertEqual((out or {}).get("lrclib_id"), 9002)
+
     def test_lrclib_search_still_ignores_feat_parenthetical(self):
         track = {
             "title": "Best Mode (feat. Guest)",

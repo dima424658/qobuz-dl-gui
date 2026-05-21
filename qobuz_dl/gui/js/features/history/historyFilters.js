@@ -11,6 +11,7 @@
   function bootstrapFilters(deps) {
     const ti = g.core.trackIdentity;
     const trackKeyStem = ti.trackKeyStem;
+    const cardForHistoryKey = ti.cardForHistoryKey;
     const GUI_PENDING = deps.guiPendingAudioPrefix;
 
     let filterMode = "all";
@@ -68,6 +69,18 @@
       return false;
     }
 
+    function dbItemForHistoryKey(dbMap, key) {
+      const k = String(key || "").trim();
+      if (!k) return null;
+      if (dbMap.has(k)) return dbMap.get(k) || null;
+      const stem = trackKeyStem(k);
+      if (!stem) return null;
+      for (const [mapKey, row] of dbMap) {
+        if (trackKeyStem(mapKey) === stem) return row || null;
+      }
+      return null;
+    }
+
     function keyIsErrorInCurrentSession(key, stemCtx) {
       const ctx = stemCtx || computeErrorStemContext();
       const stem = key ? trackKeyStem(key) : "";
@@ -76,15 +89,16 @@
       }
       const cardMap = deps.getCardMap();
       const dbMap = deps.getDbItemByKey();
-      const card = key ? cardMap.get(key) : null;
+      const row = dbItemForHistoryKey(dbMap, key);
+      const card = key ? cardForHistoryKey(cardMap, key) : null;
       const dlGlobally =
         typeof window !== "undefined" && Boolean(window.isDownloading);
       if (dlGlobally) {
-        if (dbDownloadOutcomeError(dbMap.get(key))) return true;
+        if (dbDownloadOutcomeError(row)) return true;
         if (mountedCardShowsDlTerminal(card)) return true;
         return false;
       }
-      if (dbItemIsError(dbMap.get(key))) return true;
+      if (dbItemIsError(row)) return true;
       return cardLooksLikeError(card);
     }
 
@@ -133,13 +147,21 @@
         deps.setOrder(orderAll.slice());
         deps.rebuildKeyIndex();
         if (list && cardMap.size > 0) {
+          const seen = new Set();
           for (let i = 0; i < orderAll.length; i++) {
             const k = orderAll[i];
-            const card = cardMap.get(k);
-            if (!card) continue;
+            const card = cardForHistoryKey(cardMap, k);
+            if (!card || seen.has(card)) continue;
+            seen.add(card);
             const show =
               filterMode !== "errors" ||
               keyIsErrorInCurrentSession(k, stemCtx);
+            card.classList.toggle("hidden", !show);
+            card.setAttribute("aria-hidden", show ? "false" : "true");
+          }
+          for (const card of cardMap.values()) {
+            if (!card || seen.has(card)) continue;
+            const show = filterMode !== "errors";
             card.classList.toggle("hidden", !show);
             card.setAttribute("aria-hidden", show ? "false" : "true");
           }

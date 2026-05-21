@@ -32,7 +32,6 @@
     if (!card) return false;
     const ap = (card.dataset.audioPath || "").trim();
     if (!ap || ap.startsWith(_GUI_PENDING_AUDIO_PREFIX)) return false;
-    if (ap.toLowerCase().endsWith(".missing.txt")) return false;
     return true;
   }
 
@@ -135,8 +134,13 @@
     return QG.core.trackIdentity.parseTrackRef(trackNo, title);
   }
 
-  function _trackKey(trackNo, title, lyricAlbum) {
-    return QG.core.trackIdentity.trackKey(trackNo, title, lyricAlbum);
+  function _trackKey(trackNo, title, lyricAlbum, audioPath) {
+    return QG.core.trackIdentity.trackKey(
+      trackNo,
+      title,
+      lyricAlbum,
+      audioPath,
+    );
   }
 
   function _tsResetListForHydrate(list) {
@@ -192,11 +196,21 @@
       it.title || "",
       alb,
       it.cover_url || "",
+      it.audio_path || "",
     );
     _trackStatusMap.set(key, card);
     inner.appendChild(card);
     _tsApplyHistoryDbItemToCard(card, it);
     _historyVirtHost.positionVirtCard(card, index);
+  }
+
+  function _tsRemapCardTrackKey(card) {
+    if (!card || !QG.core.trackIdentity.rebindCardTrackKey) return "";
+    return QG.core.trackIdentity.rebindCardTrackKey(
+      _trackStatusMap,
+      card,
+      _tsOrderAll,
+    );
   }
 
   function _lyricAlbumForTrackEv(ev) {
@@ -305,6 +319,7 @@
     lyricAlbum,
     lyricProvider,
     lyricDestination,
+    audioPath,
   ) {
     if (_historyCardHost) {
       _historyCardHost.setTrackLyricsChip(
@@ -315,6 +330,7 @@
         lyricAlbum,
         lyricProvider,
         lyricDestination,
+        audioPath,
       );
     }
   }
@@ -337,6 +353,18 @@
     }
     _queueHost.refreshAlbumQueueCardMetas();
     _tsUpdateErrorHistoryCountBadge();
+    if (
+      _downloadQueueIssuesHost &&
+      typeof _downloadQueueIssuesHost.clearPurchaseIssues === "function"
+    ) {
+      _downloadQueueIssuesHost.clearPurchaseIssues();
+    }
+    if (
+      _downloadQueueIssuesHost &&
+      typeof _downloadQueueIssuesHost.syncAllTrackIssues === "function"
+    ) {
+      _downloadQueueIssuesHost.syncAllTrackIssues();
+    }
   }
 
   // ── Download tab ──────────────────────────────────────────
@@ -357,8 +385,11 @@
         QG.features.download.internals.bootstrapQueueIssueBadges({
           trackKey: (trackNo, title, album) =>
             _trackKey(trackNo, title, album),
+          getDbItemByKey: _getHistoryDbMap,
           findQueueItemByUrl: (q) =>
             _queueHost.urlQueue.find((x) => x.url === q) || null,
+          releaseAlbumIdFromQueueItem: (qi) =>
+            _queueHost.releaseAlbumIdFromQueueItem(qi),
           albumQueueItemNeedsToStayVisible: (qi) =>
             _queueHost.albumQueueItemNeedsToStayVisible(qi),
           refreshAlbumQueueCardMetas: () =>
@@ -472,33 +503,13 @@
         });
     }
     if (
-      QG.features.replacements &&
-      QG.features.replacements.internals &&
-      typeof QG.features.replacements.internals.bootstrapMissingPlaceholder ===
-        "function" &&
-      _replacementAttachHost &&
-      _replacementResolutionHost
-    ) {
-      _replacementPlaceholderHost =
-        QG.features.replacements.internals.bootstrapMissingPlaceholder({
-          getAttachAnchorCard: () => _replacementAttachHost.getAnchorCard(),
-          getAttachStatusElementForCard: (card) =>
-            _replacementAttachHost.getStatusElementForCard(card),
-          syncResolutionButtonStates: (card) =>
-            _replacementResolutionHost.syncResolutionButtonStates(card),
-          getQueueUrlForPurchaseSlot: (sid) =>
-            typeof window._qUrlForPurchaseSlot === "function"
-              ? window._qUrlForPurchaseSlot(sid) || ""
-              : "",
-        });
-    }
-    if (
       QG.features.history &&
       QG.features.history.internals &&
       typeof QG.features.history.internals.bootstrapCardRendering === "function"
     ) {
       _historyCardHost = QG.features.history.internals.bootstrapCardRendering({
         getCardMap: () => _trackStatusMap,
+        getOrderAll: () => _tsOrderAll,
         appendTsOrderKey: (key) => {
           if (!_tsOrderAll.includes(key)) _tsOrderAll.push(key);
         },
@@ -552,10 +563,12 @@
           guiPendingAudioPrefix: _GUI_PENDING_AUDIO_PREFIX,
           virtThreshold: _TS_VIRT_THRESHOLD,
           ensureTrackStatusCard: _ensureTrackStatusCard,
+          setTrackCardCover: _setTrackCardCover,
           setTrackDownloadChip: _setTrackDownloadChip,
           setTrackLyricsChip: _setTrackLyricsChip,
           setTrackContentRatingBadge: _setTrackContentRatingBadge,
           normalizeLyricDestination: _normalizeLyricDestination,
+          remapCardTrackKey: _tsRemapCardTrackKey,
           applyHistoryFilter: _tsApplyHistoryFilter,
           getSkipHistoryFilterApply: () => _tsSkipHistoryFilterApply,
           setSkipHistoryFilterApply: (v) => {
@@ -574,6 +587,52 @@
               _historyVirtHost.runInitialRenderPass(list, stick);
             }
           },
+          getOrderAll: () => _tsOrderAll,
+          onPlaceholderResolved: (card) => {
+            if (_replacementResolutionHost) {
+              _replacementResolutionHost.syncResolutionButtonStates(card);
+            }
+            _tsApplyHistoryFilter();
+            if (_downloadQueueIssuesHost) {
+              let q = (card && card.dataset.queueSourceUrl) || "";
+              q = String(q).trim();
+              const sid = (card && card.dataset.slotTrackId) || "";
+              if (
+                !q &&
+                sid &&
+                typeof window._qUrlForPurchaseSlot === "function"
+              ) {
+                q = window._qUrlForPurchaseSlot(sid) || "";
+              }
+              if (q) _downloadQueueIssuesHost.syncTrackIssues(q);
+            }
+            if (_queueHost) _queueHost.refreshAlbumQueueCardMetas();
+          },
+        });
+    }
+    if (
+      QG.features.replacements &&
+      QG.features.replacements.internals &&
+      typeof QG.features.replacements.internals.bootstrapMissingPlaceholder ===
+        "function" &&
+      _replacementAttachHost &&
+      _replacementResolutionHost
+    ) {
+      _replacementPlaceholderHost =
+        QG.features.replacements.internals.bootstrapMissingPlaceholder({
+          getAttachAnchorCard: () => _replacementAttachHost.getAnchorCard(),
+          getAttachStatusElementForCard: (card) =>
+            _replacementAttachHost.getStatusElementForCard(card),
+          syncResolutionButtonStates: (card) =>
+            _replacementResolutionHost.syncResolutionButtonStates(card),
+          getQueueUrlForPurchaseSlot: (sid) =>
+            typeof window._qUrlForPurchaseSlot === "function"
+              ? window._qUrlForPurchaseSlot(sid) || ""
+              : "",
+          persistPlaceholderResolution: (card, savedPath) =>
+            _historyStoreHost
+              ? _historyStoreHost.persistPlaceholderResolution(card, savedPath)
+              : Promise.resolve(),
         });
     }
     _queueHost.initUrlQueue();
@@ -651,9 +710,16 @@
           normalizeTrackNo: _normalizeTrackNo,
           normalizeTrackTitle: _normalizeTrackTitle,
           registerAudioPathAlbum: _tsRegisterAudioPathAlbum,
+          getCardMap: () => _trackStatusMap,
+          getOrderAll: () => _tsOrderAll,
           addActiveDlKey: (key) => _tsActiveDlKeys.add(key),
           removeActiveDlKey: (key) => _tsActiveDlKeys.delete(key),
           getHistoryStore: () => _historyStoreHost,
+          removeDuplicateHistoryCards: (card, opts) => {
+            if (_historyCardHost) {
+              _historyCardHost.removeDuplicateHistoryCards(card, opts);
+            }
+          },
           syncResolutionButtonStates: (card) => {
             if (_replacementResolutionHost) {
               _replacementResolutionHost.syncResolutionButtonStates(card);
@@ -793,6 +859,12 @@
         await _historyStoreHost.hydrateFromDb();
       }
       _queueHost.refreshAlbumQueueCardMetas();
+      if (
+        _downloadQueueIssuesHost &&
+        typeof _downloadQueueIssuesHost.syncAllTrackIssues === "function"
+      ) {
+        _downloadQueueIssuesHost.syncAllTrackIssues();
+      }
     })();
     window.QobuzGui.features.queue.install({
       addUrl(url) {

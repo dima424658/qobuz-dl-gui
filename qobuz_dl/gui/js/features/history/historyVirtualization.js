@@ -9,6 +9,7 @@
   const hroot = (g.features.history = g.features.history || {});
 
   function bootstrapVirtualization(deps) {
+    const cardForHistoryKey = g.core.trackIdentity.cardForHistoryKey;
     const VIRT_OVERSCAN =
       (g.core.constants && g.core.constants.TS_VIRT_OVERSCAN) || 6;
 
@@ -134,8 +135,8 @@
         const i = sorted[j];
         const k = order[i];
         if (!k) continue;
-        if (cardMap.has(k)) {
-          const existing = cardMap.get(k);
+        const existing = cardForHistoryKey(cardMap, k);
+        if (existing) {
           if (existing && !existing.isConnected) {
             virtInnerEl.appendChild(existing);
           }

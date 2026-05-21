@@ -43,6 +43,18 @@ def _resolve_attach_album_track(client, album_id_post: str, slot_id: str):
         return None, None, None
 
 
+def _lyrics_overrides_from_request(data) -> dict:
+    """Honor live GUI lyric toggles (same keys as /api/download)."""
+    o = {}
+    if not isinstance(data, dict):
+        return o
+    if "lyrics_enabled" in data:
+        o["lyrics_enabled"] = bool(data.get("lyrics_enabled"))
+    if "lyrics_embed_metadata" in data:
+        o["lyrics_embed_metadata"] = bool(data.get("lyrics_embed_metadata"))
+    return o
+
+
 def _build_downloader(tmp, dl_album_id, queue_src=""):
     from qobuz_dl.downloader import Download as DLCls
 
@@ -104,7 +116,7 @@ def register_replacement_routes(
             try:
                 cfg = configparser.ConfigParser()
                 cfg.read(config_file())
-                tmp = build_qobuz_from_config(cfg)
+                tmp = build_qobuz_from_config(cfg, _lyrics_overrides_from_request(data))
                 tmp.client = qobuz.client
                 tmp.client.set_language_headers(tmp.native_lang)
 
@@ -139,18 +151,13 @@ def register_replacement_routes(
         slot_id = str(data.get("slot_track_id") or "").strip()
         album_id_post = str(data.get("album_id") or "").strip()
         queue_src = str(data.get("queue_source_url") or "").strip()
-        skip_lyrics = bool(data.get("skip_lyrics"))
-
         if not slot_id:
             return jsonify({"ok": False, "error": "slot_track_id required"}), 400
 
         try:
             cfg = configparser.ConfigParser()
             cfg.read(config_file())
-            tmp = build_qobuz_from_config(cfg)
-            if skip_lyrics:
-                tmp.lyrics_enabled = False
-                tmp.lyrics_embed_metadata = False
+            tmp = build_qobuz_from_config(cfg, _lyrics_overrides_from_request(data))
             tmp.client = qobuz.client
             tmp.client.set_language_headers(tmp.native_lang)
 

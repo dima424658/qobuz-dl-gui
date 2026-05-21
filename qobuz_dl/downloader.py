@@ -502,6 +502,68 @@ class Download:
         """True when pause/cancel asked to stop scheduling new work (without aborting active bytes)."""
         return self.cancel_event is not None and self.cancel_event.is_set()
 
+    def _expected_track_paths(
+        self,
+        root_dir: str,
+        tmp_count: int,
+        track_metadata: dict,
+        is_multiple: bool,
+    ) -> Tuple[str, str]:
+        """Return ``(final_audio_path, missing_placeholder_path)`` for skip-if-exists checks."""
+        is_mp3 = int(self.quality) == 5
+        extension = ".mp3" if is_mp3 else ".flac"
+        work_dir = root_dir
+        multiple = track_metadata.get("media_number") if is_multiple else None
+        if multiple is not None and not self.multiple_disc_one_dir:
+            try:
+                d_num = int(multiple)
+            except (ValueError, TypeError):
+                d_num = 1
+            work_dir = os.path.join(
+                root_dir,
+                f"{self.multiple_disc_prefix} {d_num:02d}",
+            )
+
+        track_title = _get_title(track_metadata)
+        artist = _safe_get(track_metadata, "performer", "name")
+        filename_attr = self._get_filename_attr(
+            artist,
+            track_metadata,
+            track_title,
+        )
+        if multiple:
+            formatted_path = sanitize_filename(
+                self.multiple_disc_track_format.format(**filename_attr)
+            )
+        else:
+            formatted_path = sanitize_filename(
+                self.track_format.format(**filename_attr)
+            )
+        base_stem = os.path.join(work_dir, formatted_path)[:250]
+        return base_stem + extension, base_stem + ".missing.txt"
+
+    def _emit_track_already_on_disk(
+        self,
+        track_meta: dict,
+        album_meta: dict,
+        tmp_count: int,
+        existing_path: str,
+    ) -> None:
+        track_title = _get_title(track_meta)
+        track_num = track_meta.get("track_number", tmp_count)
+        _emit_track_marker(
+            "TRACK_RESULT",
+            track_num,
+            track_title,
+            "downloaded",
+            "already-exists",
+            queue_url=self.source_queue_url,
+            local_path=os.path.abspath(existing_path),
+            lyric_album=_album_title_for_track_marker(False, track_meta, album_meta),
+            slot_track_id=str(track_meta.get("id") or ""),
+            album_release_id=str(self.item_id),
+        )
+
     def download_id_by_type(self, track=True):
         if not track:
             self.download_release()
@@ -696,17 +758,54 @@ class Download:
         track_title = _get_title(track_meta)
         track_num = track_meta.get("track_number", tmp_count)
         la, alb, dura, tr_ex = _lyric_ctx_for_ui(track_meta, album_meta)
+
+        final_file, missing_file = self._expected_track_paths(
+            dirn,
+            tmp_count,
+            track_meta,
+            is_multiple,
+        )
+        if os.path.isfile(final_file):
+            logger.info(f"{OFF}{track_title} was already downloaded")
+            self._emit_track_already_on_disk(
+                track_meta,
+                album_meta,
+                tmp_count,
+                final_file,
+            )
+            return None
+        if os.path.isfile(missing_file):
+            logger.info(f"{OFF}{track_title} placeholder already on disk")
+            self._emit_track_already_on_disk(
+                track_meta,
+                album_meta,
+                tmp_count,
+                missing_file,
+            )
+            return None
+
         try:
             parse = self.client.get_track_url(track_meta["id"], fmt_id=self.quality)
         except Exception as exc:
-            logger.error("%sFailed to resolve %s: %s", RED, track_title, exc)
+            logger.warning("%sFailed to resolve %s: %s", YELLOW, track_title, exc)
             alb_fail = _album_title_for_track_marker(False, track_meta, album_meta)
+            _emit_track_start(
+                track_num,
+                track_title,
+                _album_cover_thumb(album_meta),
+                artist=la,
+                album=alb,
+                duration_sec=dura,
+                track_explicit=tr_ex,
+                slot_track_id=str(track_meta.get("id") or ""),
+            )
             _emit_track_marker(
                 "TRACK_RESULT",
                 track_num,
                 track_title,
-                "failed",
-                str(exc),
+                "purchase_only",
+                self._purchase_open_url(track_meta, album_meta),
+                queue_url=self.source_queue_url,
                 lyric_album=alb_fail,
                 slot_track_id=str(track_meta.get("id") or ""),
                 album_release_id=str(self.item_id),
@@ -1162,9 +1261,9 @@ class Download:
                         else:
                             # Sidecar basename matches would-be FLAC/MP3 stem (see write_lrc_sidecar).
                             out = lyrics.write_lrc_sidecar(
-                                canonical_audio_anchor,
+                                missing_abs,
                                 result["lyrics"],
-                                overwrite=False,
+                                overwrite=True,
                             )
                             if not out:
                                 _emit_lyrics_marker(
@@ -1407,6 +1506,7 @@ class Download:
             formatted_path = sanitize_filename(self.track_format.format(**filename_attr))
         base_final_stem = os.path.join(root_dir, formatted_path)[:250]
         final_file = base_final_stem + extension
+        missing_file = base_final_stem + ".missing.txt"
 
         if os.path.isfile(final_file):
             logger.info(f"{OFF}{track_title} was already downloaded")
@@ -1426,6 +1526,41 @@ class Download:
                 substitute_attach=bool(stream_track_id),
             )
             return
+        if os.path.isfile(missing_file):
+            if stream_track_id:
+                try:
+                    os.remove(missing_file)
+                except OSError as exc:
+                    logger.warning(
+                        "%sCould not remove placeholder before substitute attach: %s",
+                        YELLOW,
+                        exc,
+                    )
+                for sidecar_ext in (".lrc", ".lrclib_id"):
+                    sidecar_path = base_final_stem + sidecar_ext
+                    if os.path.isfile(sidecar_path):
+                        try:
+                            os.remove(sidecar_path)
+                        except OSError:
+                            pass
+            else:
+                logger.info(f"{OFF}{track_title} placeholder already on disk")
+                _emit_track_marker(
+                    "TRACK_RESULT",
+                    track_metadata.get("track_number", tmp_count),
+                    track_title,
+                    "downloaded",
+                    "already-exists",
+                    queue_url=self.source_queue_url,
+                    local_path=missing_file,
+                    lyric_album=_album_title_for_track_marker(
+                        is_track, track_metadata, album_or_track_metadata
+                    ),
+                    slot_track_id=str(track_metadata.get("id") or ""),
+                    album_release_id="" if is_track else str(self.item_id),
+                    substitute_attach=bool(stream_track_id),
+                )
+                return
 
         if is_track:
             lyrics_release_album = (
@@ -1445,9 +1580,11 @@ class Download:
         if self.lyrics_any_enabled:
             l_meta = lyrics_track_meta or track_metadata
             try:
-                lyrics_ui_title_pre = _get_title(l_meta)
+                lyrics_ui_title_pre = _get_title(track_metadata)
             except Exception:
-                lyrics_ui_title_pre = str((l_meta or {}).get("title") or "track")
+                lyrics_ui_title_pre = str(
+                    (track_metadata or {}).get("title") or "track"
+                )
             explicit_pre = bool(
                 l_meta.get("parental_warning")
                 or l_meta.get("parental_advisory")
@@ -1598,19 +1735,21 @@ class Download:
                     album_release_id="" if is_track else str(self.item_id),
                 )
                 if self.lyrics_any_enabled:
-                    try:
-                        fail_title = _get_title(lyrics_track_meta or track_metadata)
-                    except Exception:
-                        fail_title = track_title
                     _emit_lyrics_marker(
                         track_metadata.get("track_number"),
-                        fail_title,
+                        track_title,
                         "error",
                         fail_detail[:120],
                         0,
                         final_file,
                     )
                 return
+
+            if stream_track_id and os.path.isfile(missing_file):
+                try:
+                    os.remove(missing_file)
+                except OSError:
+                    pass
 
             _emit_track_marker(
                 "TRACK_RESULT",
@@ -1672,13 +1811,9 @@ class Download:
                 album_release_id="" if is_track else str(self.item_id),
             )
             if self.lyrics_any_enabled:
-                try:
-                    fail_title = _get_title(lyrics_track_meta or track_metadata)
-                except Exception:
-                    fail_title = track_title
                 _emit_lyrics_marker(
                     track_metadata.get("track_number"),
-                    fail_title,
+                    track_title,
                     "error",
                     fail_detail[:120],
                     0,
@@ -1921,11 +2056,12 @@ class Download:
                 return
             out = None
             metadata_written = False
+            sidecar_overwrite = lyrics_track_meta is not None
             if self.lyrics_enabled:
                 out = lyrics.write_lrc_sidecar(
                     final_file,
                     lyrics_body,
-                    overwrite=False,
+                    overwrite=sidecar_overwrite,
                 )
             if self.lyrics_embed_metadata:
                 metadata_written = metadata.write_lyrics_metadata(final_file, lyrics_body)

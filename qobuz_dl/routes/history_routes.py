@@ -72,6 +72,21 @@ def register_history_routes(
             release_album_id=str(data.get("release_album_id") or ""),
             pending_slot_cleanup_id=str(data.get("pending_slot_cleanup_id") or ""),
             attach_search_eligible=attach_search_kw,
+            substitute_lyric_title=str(data.get("substitute_lyric_title") or ""),
+            substitute_lyric_artist=str(data.get("substitute_lyric_artist") or ""),
+            substitute_lyric_album=str(data.get("substitute_lyric_album") or ""),
+            substitute_lyric_duration_sec=int(data.get("substitute_lyric_duration_sec") or 0),
+            substitute_lyric_explicit=(
+                1
+                if data.get("substitute_lyric_explicit") is True
+                or str(data.get("substitute_lyric_explicit")).strip().lower()
+                in ("1", "true", "yes")
+                else 0
+                if data.get("substitute_lyric_explicit") is False
+                or str(data.get("substitute_lyric_explicit")).strip().lower()
+                in ("0", "false", "no")
+                else None
+            ),
         )
         return jsonify({"ok": True})
 

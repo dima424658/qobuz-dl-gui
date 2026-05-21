@@ -9,14 +9,6 @@
   function bootstrapMissingPlaceholder(deps) {
     const api = g.api;
 
-    function hasValidLyrics(card) {
-      if (!card) return false;
-      const chip = card.querySelector(".lyrics-chip");
-      if (!chip) return false;
-      const parts = (chip.className || "").split(/\s+/);
-      return parts.includes("synced") || parts.includes("plain");
-    }
-
     async function writeMissingPlaceholder(card, triggerBtnOpt) {
       const c = card && card.dataset ? card : deps.getAttachAnchorCard();
       const sid = ((c && c.dataset && c.dataset.slotTrackId) || "").trim();
@@ -53,7 +45,9 @@
         qs = qUrlFn(sid) || "";
       }
       if (qs) payload.queue_source_url = qs;
-      if (hasValidLyrics(c)) payload.skip_lyrics = true;
+      if (typeof api.replacementApi.lyricDownloadOptionsFromUi === "function") {
+        Object.assign(payload, api.replacementApi.lyricDownloadOptionsFromUi());
+      }
 
       if (triggerBtn instanceof HTMLElement) {
         triggerBtn.disabled = true;
@@ -67,8 +61,15 @@
         if (data.ok) {
           const sp = String(data.saved_path || "").trim();
           if (sp) c.dataset.missingPlaceholderPath = sp;
-          c.dataset.resolvedBy = "placeholder";
-          deps.syncResolutionButtonStates(c);
+          if (
+            typeof deps.persistPlaceholderResolution === "function" &&
+            sp
+          ) {
+            await deps.persistPlaceholderResolution(c, sp);
+          } else {
+            c.dataset.resolvedBy = "placeholder";
+            deps.syncResolutionButtonStates(c);
+          }
           if (statusEl) {
             const bn = String(data.basename || "").trim();
             statusEl.textContent = bn ? `Saved: ${bn}` : "Placeholder saved.";
@@ -93,7 +94,7 @@
       }
     }
 
-    return { writeMissingPlaceholder, hasValidLyrics };
+    return { writeMissingPlaceholder };
   }
 
   rroot.internals = rroot.internals || {};

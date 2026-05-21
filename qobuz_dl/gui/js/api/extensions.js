@@ -103,7 +103,17 @@
     },
   };
 
+  function lyricDownloadOptionsFromUi() {
+    const o = {};
+    const lrc = document.getElementById("dl-lyrics-enabled");
+    const emb = document.getElementById("dl-lyrics-embed-metadata");
+    if (lrc) o.lyrics_enabled = !!lrc.checked;
+    if (emb) o.lyrics_embed_metadata = !!emb.checked;
+    return o;
+  }
+
   api.replacementApi = {
+    lyricDownloadOptionsFromUi,
     searchAttachTracks(body) {
       return jsonPost("/api/search_tracks_attach", body);
     },

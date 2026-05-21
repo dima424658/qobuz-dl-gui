@@ -15,6 +15,7 @@
     const trackKey = ti.trackKey;
     const normalizeTrackNo = ti.normalizeTrackNo;
     const normalizeTrackTitle = ti.normalizeTrackTitle;
+    const applyTrackStatusSubLabel = ti.applyTrackStatusSubLabel;
 
     const ic = g.core.icons;
     const TRACK_DL_ICON_SVG = ic.trackDlIconSvg;
@@ -65,13 +66,24 @@
       img.src = url;
     }
 
-    function buildTrackStatusCardEl(trackNo, title, lyricAlbum, coverUrl) {
+    function buildTrackStatusCardEl(
+      trackNo,
+      title,
+      lyricAlbum,
+      coverUrl,
+      audioPathForKey,
+    ) {
       const parsed = parseTrackRef(trackNo, title);
       const alb =
         lyricAlbum != null && String(lyricAlbum).trim() !== ""
           ? String(lyricAlbum).trim()
           : "";
-      const key = trackKey(parsed.trackNo, parsed.title, alb);
+      const key = trackKey(
+        parsed.trackNo,
+        parsed.title,
+        alb,
+        audioPathForKey || "",
+      );
       const card = document.createElement("div");
       card.className = "track-status-card";
       card.dataset.trackKey = key;
@@ -91,8 +103,7 @@
     `;
       card.querySelector(".track-status-title").textContent =
         parsed.title || "Track";
-      card.querySelector(".track-status-sub").textContent =
-        `#${parsed.trackNo || "?"}`;
+      applyTrackStatusSubLabel(card);
       if (coverUrl) setTrackCardCover(card, coverUrl);
       return { card, key, parsed, alb };
     }
@@ -104,6 +115,7 @@
       coverUrl,
       lyricAlbum,
       slotTrackId,
+      audioPathForKey,
     ) {
       const list = document.getElementById("dl-track-status");
       if (!list) return null;
@@ -127,7 +139,12 @@
           }
         }
       }
-      const key = trackKey(parsed.trackNo, parsed.title, alb);
+      const key = trackKey(
+        parsed.trackNo,
+        parsed.title,
+        alb,
+        audioPathForKey || "",
+      );
       if (key && cardMap.has(key)) {
         const existing = cardMap.get(key);
         if (coverUrl) setTrackCardCover(existing, coverUrl);
@@ -135,13 +152,24 @@
         if (sid) existing.dataset.slotTrackId = sid;
         return existing;
       }
-      if (!createNew && !key) return null;
+      const apLookup = String(audioPathForKey || "").trim();
+      if (apLookup) {
+        for (const existing of cardMap.values()) {
+          if ((existing.dataset.audioPath || "").trim() !== apLookup) continue;
+          if (coverUrl) setTrackCardCover(existing, coverUrl);
+          if (alb) existing.dataset.lyricAlbum = alb;
+          if (sid) existing.dataset.slotTrackId = sid;
+          return existing;
+        }
+      }
+      if (!createNew) return null;
 
       const { card } = buildTrackStatusCardEl(
         trackNo,
         title,
         lyricAlbum,
         coverUrl,
+        audioPathForKey,
       );
       if (sid) card.dataset.slotTrackId = sid;
       const stickToBottom = scrollContainerAtBottom(list);
@@ -235,15 +263,6 @@
       sb.addEventListener("click", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
-        const prevPath = (card.dataset.missingPlaceholderPath || "").trim();
-        if (card.dataset.resolvedBy === "placeholder" && prevPath) {
-          api.replacementApi
-            .deleteResolutionFile({ file_path: prevPath })
-            .catch(() => {});
-          delete card.dataset.missingPlaceholderPath;
-          delete card.dataset.resolvedBy;
-          syncResolutionButtonStates(card);
-        }
         openAttachTrackPopover(card);
       });
       tags.appendChild(sb);
@@ -371,7 +390,11 @@
       tags.appendChild(el);
       if (cls === "failed") {
         finalizeSubstituteSearchBtn(tags, card);
-      } else if (cls === "done" && card.dataset.attachSearchEligible === "1") {
+      } else if (
+        cls === "done" &&
+        (card.dataset.attachSearchEligible === "1" ||
+          card.dataset.resolvedBy === "placeholder")
+      ) {
         finalizeSubstituteSearchBtn(tags, card);
       }
     }
@@ -671,6 +694,37 @@
       return "";
     }
 
+    function removeDuplicateHistoryCards(keepCard, opts) {
+      const cardMap = getCardMap();
+      if (!keepCard || !cardMap) return;
+      const sid = String(
+        (opts && opts.slotTrackId) || keepCard.dataset.slotTrackId || "",
+      ).trim();
+      const ap = String(
+        (opts && opts.audioPath) || keepCard.dataset.audioPath || "",
+      ).trim();
+      const orderAll =
+        typeof deps.getOrderAll === "function" ? deps.getOrderAll() : null;
+      const doomed = new Set();
+      for (const c of cardMap.values()) {
+        if (!c || c === keepCard) continue;
+        const sameSid = sid && (c.dataset.slotTrackId || "").trim() === sid;
+        const sameAp = ap && (c.dataset.audioPath || "").trim() === ap;
+        if (sameSid || sameAp) doomed.add(c);
+      }
+      for (const c of doomed) {
+        const oldKey = (c.dataset.trackKey || "").trim();
+        if (oldKey) {
+          cardMap.delete(oldKey);
+          if (orderAll) {
+            const idx = orderAll.indexOf(oldKey);
+            if (idx >= 0) orderAll.splice(idx, 1);
+          }
+        }
+        c.remove();
+      }
+    }
+
     function setTrackLyricsChip(
       trackNo,
       title,
@@ -679,6 +733,7 @@
       lyricAlbum,
       lyricProvider,
       lyricDestination,
+      audioPath,
     ) {
       const card = ensureTrackStatusCard(
         trackNo,
@@ -686,6 +741,8 @@
         false,
         undefined,
         lyricAlbum,
+        "",
+        audioPath || "",
       );
       if (!card) return;
       const tags = card.querySelector(".track-status-tags");
@@ -761,6 +818,7 @@
       setTrackCardCover,
       buildTrackStatusCardEl,
       ensureTrackStatusCard,
+      removeDuplicateHistoryCards,
       setTrackContentRatingBadge,
       setTrackDownloadChip,
       setTrackLyricsChip,

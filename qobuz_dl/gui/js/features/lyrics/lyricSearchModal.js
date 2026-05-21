@@ -35,6 +35,39 @@
     return String(displayTitle || "").trim();
   }
 
+  function lyricArtistFromAudioPath(audioPath) {
+    const p = String(audioPath || "").replace(/\\/g, "/").trim();
+    if (!p) return "";
+    const parts = p.split("/").filter(Boolean);
+    const musicIdx = parts.findIndex((seg) => seg.toLowerCase() === "music");
+    if (musicIdx >= 0 && musicIdx + 1 < parts.length) {
+      return parts[musicIdx + 1].trim();
+    }
+    if (parts.length >= 3) {
+      return parts[parts.length - 3].trim();
+    }
+    return "";
+  }
+
+  function resolveLyricArtistForCard(card) {
+    const ti = g.core && g.core.trackIdentity;
+    const pending =
+      (g.core && g.core.constants && g.core.constants.GUI_PENDING_AUDIO_PREFIX) ||
+      "__GUI_PENDING__:slot:";
+    if (ti && typeof ti.resolveHistoryArtistForCard === "function") {
+      return ti.resolveHistoryArtistForCard(card, pending);
+    }
+    if (!card) return "";
+    let artist = (card.dataset.lyricArtist || "").trim();
+    if (artist) return artist;
+    artist = lyricArtistFromAudioPath(card.dataset.audioPath || "");
+    if (artist) {
+      card.dataset.lyricArtist = artist;
+      return artist;
+    }
+    return "";
+  }
+
   function clearAnchorHighlight() {
     document
       .querySelectorAll(".track-status-card." + ANCHOR_CLASS)
@@ -263,17 +296,34 @@
     const pv = preview();
     if (pv && typeof pv.close === "function") pv.close();
     const openSession = ++_openSession;
-    const titleEl = card.querySelector(".track-status-title");
-    const displayTitle = ((titleEl && titleEl.textContent) || "").trim();
-    const title = titleFromDisplay(displayTitle);
     const out = lyricOut();
     if (out && typeof out.syncFromDownload === "function") {
       out.syncFromDownload();
     }
-    const artist = (card.dataset.lyricArtist || "").trim();
-    const album = (card.dataset.lyricAlbum || "").trim();
-    let durationSec = parseInt(String(card.dataset.durationSec || "0"), 10);
-    if (Number.isNaN(durationSec)) durationSec = 0;
+    const tiCore = g.core && g.core.trackIdentity;
+    const lctx =
+      tiCore && typeof tiCore.lyricSearchContextForCard === "function"
+        ? tiCore.lyricSearchContextForCard(card)
+        : {
+            title: titleFromDisplay(
+              (
+                (card.querySelector(".track-status-title") &&
+                  card.querySelector(".track-status-title").textContent) ||
+                ""
+              ).trim(),
+            ),
+            artist: resolveLyricArtistForCard(card),
+            album: (card.dataset.lyricAlbum || "").trim(),
+            durationSec:
+              parseInt(String(card.dataset.durationSec || "0"), 10) || 0,
+            trackExplicit: null,
+          };
+    const title = String(lctx.title || "").trim();
+    const artist = String(lctx.artist || "").trim();
+    const album = String(lctx.album || "").trim();
+    const durationSec = Number.isFinite(lctx.durationSec)
+      ? lctx.durationSec
+      : 0;
     const audioPath = (card.dataset.audioPath || "").trim();
     const openingPath = audioPath;
 
@@ -285,10 +335,13 @@
     if (al) al.value = album;
     clearFieldErrors();
 
-    const teRaw = card.dataset.trackExplicit;
-    let trackExplicit = null;
-    if (teRaw === "1") trackExplicit = true;
-    else if (teRaw === "0") trackExplicit = false;
+    let trackExplicit = lctx.trackExplicit;
+    if (trackExplicit !== true && trackExplicit !== false) {
+      const teRaw = card.dataset.trackExplicit;
+      if (teRaw === "1") trackExplicit = true;
+      else if (teRaw === "0") trackExplicit = false;
+      else trackExplicit = null;
+    }
     _modalCtx = {
       audioPath,
       durationSec,

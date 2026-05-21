@@ -1,5 +1,5 @@
 /**
- * Queue purchase-only badges + URL error tips (D1C).
+ * Queue purchase-only / failed-track badges + URL error tips (D1C).
  *
  * Invoked once from `app.js` `initDownload()` via `bootstrapQueueIssueBadges(deps)`.
  */
@@ -15,10 +15,15 @@
       "This release is not available for streaming on Qobuz. It may only be sold as a full album (purchase-only or region-restricted), open it on Qobuz to check.",
     urlErrorGeneric:
       "This queue item did not finish successfully. Check the activity log for details — causes include network errors, quality restrictions, or tracks that could not be downloaded.",
+    trackIssues:
+      "One or more tracks on this album could not be downloaded (failed, purchase-only, or unavailable). Check download history for details.",
   };
 
   function bootstrapQueueIssueBadges(deps) {
-    const purchaseOnlyKeysByUrl = new Map();
+    const issueKeysByUrl = new Map();
+    const GUI_PENDING =
+      (g.core && g.core.constants && g.core.constants.GUI_PENDING_AUDIO_PREFIX) ||
+      "__GUI_PENDING__:slot:";
 
     function findCardByUrl(url) {
       const cards = document.querySelectorAll("#dl-queue .queue-card");
@@ -40,24 +45,56 @@
       const sid = String(slotId || "").trim();
       if (!sid) return "";
       const pk = `sid:${sid}`;
-      for (const [url, set] of purchaseOnlyKeysByUrl.entries()) {
+      for (const [url, set] of issueKeysByUrl.entries()) {
         if (set.has(pk)) return url;
       }
       return "";
     }
 
-    function syncPurchaseIssues(qurl) {
+    function countIssuesFromHistory(releaseAlbumId) {
+      const rid = String(releaseAlbumId || "").trim();
+      if (!rid || typeof deps.getDbItemByKey !== "function") return 0;
+      const map = deps.getDbItemByKey();
+      let n = 0;
+      for (const it of map.values()) {
+        if (String(it.release_album_id || "").trim() !== rid) continue;
+        const st = String(it.download_status || "downloaded").toLowerCase();
+        const ap = String(it.audio_path || "").trim();
+        if (
+          (st === "failed" || st === "purchase_only") &&
+          ap.startsWith(GUI_PENDING)
+        ) {
+          n++;
+        }
+      }
+      return n;
+    }
+
+    function issueCountForUrl(qurl) {
+      const q = String(qurl || "").trim();
+      if (!q) return 0;
+      const findQueueItem = deps.findQueueItemByUrl;
+      const releaseIdFromQi = deps.releaseAlbumIdFromQueueItem;
+      if (typeof findQueueItem === "function" && typeof releaseIdFromQi === "function") {
+        const qi = findQueueItem(q);
+        const rid = releaseIdFromQi(qi);
+        return countIssuesFromHistory(rid);
+      }
+      return 0;
+    }
+
+    function syncTrackIssues(qurl) {
       const q = String(qurl || "").trim();
       if (!q) return;
       const card = findCardByUrl(q);
       if (!card) return;
       const info = card.querySelector(".queue-card-info");
       if (!info) return;
-      const set = purchaseOnlyKeysByUrl.get(q);
-      const purchaseBadge = info.querySelector(
-        ".dl-error-badge.dl-purchase-badge",
+      const n = issueCountForUrl(q);
+      const trackBadge = info.querySelector(
+        ".dl-error-badge.dl-track-issues-badge",
       );
-      const failedBadge = info.querySelector(
+      const urlFailedBadge = info.querySelector(
         ".dl-error-badge.dl-url-failed-badge",
       );
       const findQueueItem = deps.findQueueItemByUrl;
@@ -69,18 +106,18 @@
         typeof stayVisible === "function" &&
         stayVisible(qiHold);
 
-      if (!set || set.size === 0) {
-        purchaseOnlyKeysByUrl.delete(q);
-        if (purchaseBadge) purchaseBadge.remove();
-        if (!failedBadge && !stayAlbum) {
+      if (n === 0) {
+        if (trackBadge) trackBadge.remove();
+        if (!urlFailedBadge && !stayAlbum) {
           card.classList.remove("dl-error");
+        } else if (stayAlbum && !urlFailedBadge) {
+          card.classList.add("dl-error");
         }
         const stillActive =
           card.classList.contains("dl-active") ||
           card.classList.contains("dl-pending");
-        if (!stillActive && !failedBadge) {
+        if (!stillActive && !urlFailedBadge) {
           if (stayAlbum) {
-            card.classList.add("dl-error");
             const refresh = deps.refreshAlbumQueueCardMetas;
             if (typeof refresh === "function") refresh();
             return;
@@ -94,56 +131,72 @@
         return;
       }
 
-      let badge = purchaseBadge;
+      if (urlFailedBadge) urlFailedBadge.remove();
+
+      let badge = trackBadge;
       if (!badge) {
         badge = document.createElement("span");
-        badge.className = "dl-error-badge dl-purchase-badge";
-        badge.setAttribute("data-tip", TIPS.purchaseQueue);
-        badge.setAttribute("aria-label", TIPS.purchaseQueue);
-        badge.removeAttribute("title");
+        badge.className = "dl-error-badge dl-track-issues-badge";
         info.appendChild(badge);
       }
-      badge.textContent = `${set.size} ⚠ Purchase only`;
+      badge.textContent = `${n} \u26a0 Purchase only`;
       badge.setAttribute("data-tip", TIPS.purchaseQueue);
-      badge.setAttribute("aria-label", TIPS.purchaseQueue);
+      badge.setAttribute("aria-label", `${n} purchase-only track(s) on this album`);
       badge.removeAttribute("title");
+      card.classList.remove("dl-active", "dl-pending", "dl-done");
+      card.classList.add("dl-error");
     }
 
-    function markPurchaseOnly(qurl, pk) {
+    function markTrackIssue(qurl, pk) {
       const q = String(qurl || "").trim();
       const key = String(pk || "").trim();
       if (!q || !key) return;
-      let pset = purchaseOnlyKeysByUrl.get(q);
-      if (!pset) {
-        pset = new Set();
-        purchaseOnlyKeysByUrl.set(q, pset);
+      let set = issueKeysByUrl.get(q);
+      if (!set) {
+        set = new Set();
+        issueKeysByUrl.set(q, set);
       }
-      pset.add(key);
-      const qcard = findCardByUrl(q);
-      if (qcard) {
-        qcard.classList.remove("dl-active", "dl-pending", "dl-done");
-        qcard.classList.add("dl-error");
-        syncPurchaseIssues(q);
-      }
+      set.add(key);
+      syncTrackIssues(q);
     }
 
-    function resolvePurchaseOnly(qurl, pk) {
+    function resolveTrackIssue(qurl, pk) {
       const q = String(qurl || "").trim();
       const key = String(pk || "").trim();
       if (!q) return;
-      const pset = purchaseOnlyKeysByUrl.get(q);
-      if (pset && key && pset.delete(key) && pset.size === 0) {
-        purchaseOnlyKeysByUrl.delete(q);
+      const set = issueKeysByUrl.get(q);
+      if (set && key && set.delete(key) && set.size === 0) {
+        issueKeysByUrl.delete(q);
       }
-      syncPurchaseIssues(q);
+      syncTrackIssues(q);
+    }
+
+    function markPurchaseOnly(qurl, pk) {
+      markTrackIssue(qurl, pk);
+    }
+
+    function resolvePurchaseOnly(qurl, pk) {
+      resolveTrackIssue(qurl, pk);
     }
 
     function clearPurchaseIssues() {
-      purchaseOnlyKeysByUrl.clear();
+      issueKeysByUrl.clear();
+    }
+
+    function syncAllTrackIssues() {
+      document.querySelectorAll("#dl-queue .queue-card").forEach((card) => {
+        const q = (card.dataset.url || "").trim();
+        if (q) syncTrackIssues(q);
+      });
     }
 
     function applyUrlErrorBadge(card, ev) {
       if (!card) return;
+      const qurl = String(card.dataset.url || "").trim();
+      if (qurl && issueCountForUrl(qurl) > 0) {
+        syncTrackIssues(qurl);
+        return;
+      }
       card.classList.remove("dl-active", "dl-pending");
       card.classList.add("dl-error");
       const info = card.querySelector(".queue-card-info");
@@ -158,8 +211,8 @@
       const isNonStream = detail === "non_streamable";
       const tip = isNonStream ? TIPS.notStreamable : TIPS.urlErrorGeneric;
       badge.textContent = isNonStream
-        ? "⚠ Not streamable"
-        : "⚠ Download issue";
+        ? "\u26a0 Not streamable"
+        : "\u26a0 Download issue";
       badge.setAttribute("data-tip", tip);
       badge.setAttribute("aria-label", tip);
       badge.removeAttribute("title");
@@ -172,7 +225,10 @@
       findCardByUrl,
       purchaseIssueSlotKey,
       qUrlForPurchaseSlot,
-      syncPurchaseIssues,
+      syncTrackIssues,
+      syncAllTrackIssues,
+      markTrackIssue,
+      resolveTrackIssue,
       markPurchaseOnly,
       resolvePurchaseOnly,
       clearPurchaseIssues,

@@ -73,6 +73,7 @@
     lyricAlbum,
     lyricProvider,
     lyricDestination,
+    audioPath,
   ) {
     if (!_impl || typeof _impl.setLyricsChip !== "function") {
       return;
@@ -85,6 +86,7 @@
       lyricAlbum,
       lyricProvider,
       lyricDestination,
+      audioPath,
     );
   }
 

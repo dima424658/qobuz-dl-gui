@@ -32,16 +32,23 @@
     };
   }
 
-  function _countHistoryDownloadedForRelease(releaseAlbumId) {
+  function _countHistoryDownloadedForRelease(releaseAlbumId, lyricAlbumTitle) {
     const rid = String(releaseAlbumId || "").trim();
-    if (!rid) return 0;
+    const albKey = String(lyricAlbumTitle || "").trim().toLowerCase();
+    if (!rid && !albKey) return 0;
+    const seen = new Set();
     let n = 0;
     for (const it of getTsMap().values()) {
-      if (String(it.release_album_id || "").trim() !== rid) continue;
       const st = String(it.download_status || "downloaded").toLowerCase();
       if (st !== "downloaded") continue;
       const ap = String(it.audio_path || "").trim();
       if (!ap || ap.startsWith(GUI_PENDING)) continue;
+      const ridMatch = rid && String(it.release_album_id || "").trim() === rid;
+      const albMatch =
+        albKey && String(it.lyric_album || "").trim().toLowerCase() === albKey;
+      if (!ridMatch && !albMatch) continue;
+      if (seen.has(ap)) continue;
+      seen.add(ap);
       n++;
     }
     return n;
@@ -59,7 +66,8 @@
       _qobuzUrlTypeAndId(qi.url).id ||
       "";
     if (!id) return null;
-    const done = _countHistoryDownloadedForRelease(id);
+    const albumTitle = String(r.title || "").trim();
+    const done = _countHistoryDownloadedForRelease(id, albumTitle);
     const remaining = Math.max(0, total - done);
     return { total, done, remaining };
   }
@@ -82,9 +90,7 @@
     for (const it of getTsMap().values()) {
       if (String(it.release_album_id || "").trim() !== rid) continue;
       const st = String(it.download_status || "downloaded").toLowerCase();
-      const ap = String(it.audio_path || "").trim();
       if (st === "failed" || st === "purchase_only") return true;
-      if (ap.startsWith(GUI_PENDING)) return true;
     }
     return false;
   }
@@ -782,6 +788,7 @@
       progressBarDenominatorFromQueueItem: _progressBarDenominatorFromQueueItem,
       remainingTracksContributionFromQueueItem: _remainingTracksContributionFromQueueItem,
       albumQueueItemNeedsToStayVisible: _albumQueueItemNeedsToStayVisible,
+      releaseAlbumIdFromQueueItem: _releaseAlbumIdFromQueueItem,
       addUrlToQueue: _addUrlToQueue,
       removeFromQueueByUrl: _removeFromQueueByUrl,
       removeFromQueue: _removeFromQueue,

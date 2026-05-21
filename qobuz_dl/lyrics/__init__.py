@@ -190,7 +190,8 @@ def _version_qualifier_tokens(title: str) -> set:
     different audio performance.
     """
     out = set()
-    for seg in _BRACKET_SEGMENT_RE.findall(title or ""):
+    raw = title or ""
+    for seg in _BRACKET_SEGMENT_RE.findall(raw):
         if _FEATURE_RE.search(f"({seg})"):
             continue
         norm = _normalize_for_match(seg)
@@ -201,6 +202,16 @@ def _version_qualifier_tokens(title: str) -> set:
             for tok in re.findall(r"[a-z0-9]+", norm.lower())
             if len(tok) > 2 and tok not in {"the", "and", "for", "with"}
         )
+    # LRCLIB often uses "Track - Remastered" instead of "(Remastered)".
+    dash_tail = re.split(r"\s+[-–—]\s+", raw, maxsplit=1)
+    if len(dash_tail) == 2:
+        tail = _normalize_for_match(dash_tail[1])
+        if tail and _VERSION_TOKEN_RE.search(tail):
+            out.update(
+                tok
+                for tok in re.findall(r"[a-z0-9]+", tail.lower())
+                if len(tok) > 2 and tok not in {"the", "and", "for", "with"}
+            )
     return out
 
 
@@ -209,10 +220,19 @@ def _title_version_compatible(want_title: str, got_title: str) -> bool:
     got = _version_qualifier_tokens(got_title)
     if not want and not got:
         return True
+    want_specific = want - _GENERIC_VERSION_TOKENS
+    got_specific = got - _GENERIC_VERSION_TOKENS
+    if want_specific and got_specific:
+        return bool(want_specific & got_specific)
+    if want_specific and not got_specific:
+        return False
+    if not want_specific and got_specific:
+        return False
     if want and got:
-        meaningful = (want & got) - _GENERIC_VERSION_TOKENS
-        return bool(meaningful)
-    return False
+        return bool(want & got)
+    if want and not got:
+        return True
+    return True
 
 
 def _token_overlap(a: str, b: str) -> float:
@@ -1216,7 +1236,6 @@ def fetch_synced_lyrics_with_search_fallback(
     out, strict_rows = _fetch_lrclib_result_and_rows(
         track,
         timeout_sec=timeout_sec,
-        max_get_hydrations=0,
     )
     if out:
         _lrc_telapsed(t_phase1, "phase1 fetch_synced_lyrics (_fetch_lrclib)", "HIT")
