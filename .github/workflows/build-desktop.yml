@@ -70,8 +70,8 @@ jobs:
           name: linux-build
           path: Qobuz-DL-GUI-Linux-x64
 
-  build-macos:
-    runs-on: macos-latest
+  build-macos-x64:
+    runs-on: [intel, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -95,8 +95,33 @@ jobs:
           name: macos-build
           path: Qobuz-DL-GUI-macOS-x64.zip
 
+  build-macos-arm64:
+    runs-on: [arm64, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: PyInstaller
+        run: python3 -m PyInstaller --noconfirm qobuz_dl_gui.spec
+
+      - name: Zip .app bundle
+        run: cd dist && zip -ry ../Qobuz-DL-GUI-macOS-arm64.zip Qobuz-DL-GUI.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: Qobuz-DL-GUI-macOS-arm64.zip
+
   release:
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-macos-x64, build-macos-arm64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -117,6 +142,7 @@ jobs:
             release-assets/Qobuz-DL-GUI-Windows-x64.exe
             release-assets/Qobuz-DL-GUI-Linux-x64
             release-assets/Qobuz-DL-GUI-macOS-x64.zip
+            release-assets/Qobuz-DL-GUI-macOS-arm64.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
